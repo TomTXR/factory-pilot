@@ -1,0 +1,40 @@
+name: Preview cleanup (reusable)
+
+# Removes the preview of a PR (containers, data, DNS record). Called by
+# deploy.yml (PR closed) and lander.yml (after merge).
+on:
+  workflow_call:
+    inputs:
+      pr:
+        type: string
+        required: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: preview-${{ inputs.pr }}
+      cancel-in-progress: true
+    steps:
+      - name: Remove preview
+        env:
+          SSH_KEY: ${{ secrets.FACTORY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.FACTORY_KNOWN_HOSTS }}
+          FACTORY_IP: ${{ vars.FACTORY_IP }}
+          PR: ${{ inputs.pr }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key "deploy@$FACTORY_IP" "destroy pr $PR"
+
+      - name: Remove preview DNS record
+        env:
+          CF_DNS_TOKEN: ${{ secrets.CF_DNS_TOKEN }}
+          CF_ZONE_ID: ${{ vars.CF_ZONE_ID }}
+          HOST: pilot-pr-${{ inputs.pr }}.domigo.com
+        run: |
+          if [ -z "$CF_DNS_TOKEN" ]; then echo "::warning::CF_DNS_TOKEN not set, skipping DNS"; exit 0; fi
+          api="https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records"
+          id=$(curl -fsS -H "Authorization: Bearer $CF_DNS_TOKEN" "$api?type=A&name=$HOST" | jq -r '.result[0].id // empty')
+          if [ -n "$id" ]; then curl -fsS -X DELETE -H "Authorization: Bearer $CF_DNS_TOKEN" "$api/$id" > /dev/null; echo "deleted $HOST"; fi
