@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PROJECT_OWNER: TomTXR
+  PROJECT_OWNER: "@me"  # token owner (TomTXR); avoids an owner-type lookup the project-only token cannot do
   PROJECT_NUMBER: "1"
 
 jobs:
