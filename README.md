@@ -14,3 +14,5 @@ npm run e2e
 ```
 
 Deployment: `.github/workflows/deploy.yml` calls `deploy/server/pilot-deploy.sh` on the factory VM over SSH after CI passes.
+
+Preview pipeline test.
