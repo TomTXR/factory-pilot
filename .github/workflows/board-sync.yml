@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PROJECT_OWNER: "@me"  # token owner (TomTXR); avoids an owner-type lookup the project-only token cannot do
+  PROJECT_LOGIN: TomTXR
   PROJECT_NUMBER: "1"
 
 jobs:
@@ -47,15 +47,27 @@ jobs:
       - name: Update board
         if: steps.map.outputs.status != ''
         env:
-          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          TOKEN: ${{ secrets.PROJECT_TOKEN }}
           STATUS: ${{ steps.map.outputs.status }}
-          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_NODE_ID: ${{ github.event.issue.node_id }}
+        # Plain GraphQL via curl: the token only has the "project" scope, and the
+        # gh project commands demand read:org / read:discussion on the client side.
         run: |
-          if [ -z "$GH_TOKEN" ]; then echo "::warning::PROJECT_TOKEN not set, skipping board sync"; exit 0; fi
-          item=$(gh project item-add "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --url "$ISSUE_URL" --format json --jq .id)
-          pid=$(gh project view "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json --jq .id)
-          fields=$(gh project field-list "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json)
-          fid=$(echo "$fields" | jq -r '.fields[] | select(.name=="Status") | .id')
-          oid=$(echo "$fields" | jq -r --arg s "$STATUS" '.fields[] | select(.name=="Status") | .options[] | select(.name==$s) | .id')
-          gh project item-edit --id "$item" --project-id "$pid" --field-id "$fid" --single-select-option-id "$oid" > /dev/null
+          if [ -z "$TOKEN" ]; then echo "::warning::PROJECT_TOKEN not set, skipping board sync"; exit 0; fi
+          gql() {
+            out=$(curl -sS -H "Authorization: bearer $TOKEN" -H "Content-Type: application/json" \
+              https://api.github.com/graphql -d "$(jq -n --arg q "$1" --argjson v "$2" '{query:$q, variables:$v}')")
+            if [ "$(echo "$out" | jq '.errors // [] | length')" != "0" ]; then echo "$out" | jq -c .errors >&2; exit 1; fi
+            echo "$out"
+          }
+          p=$(gql 'query($login:String!,$n:Int!){ user(login:$login){ projectV2(number:$n){ id field(name:"Status"){ ... on ProjectV2SingleSelectField { id options { id name } } } } } }' \
+            "$(jq -n --arg l "$PROJECT_LOGIN" --argjson n "$PROJECT_NUMBER" '{login:$l, n:$n}')")
+          pid=$(echo "$p" | jq -r .data.user.projectV2.id)
+          fid=$(echo "$p" | jq -r .data.user.projectV2.field.id)
+          oid=$(echo "$p" | jq -r --arg s "$STATUS" '.data.user.projectV2.field.options[] | select(.name==$s) | .id')
+          [ -n "$oid" ] || { echo "::error::Status option '$STATUS' not found on the board"; exit 1; }
+          item=$(gql 'mutation($p:ID!,$c:ID!){ addProjectV2ItemById(input:{projectId:$p, contentId:$c}){ item { id } } }' \
+            "$(jq -n --arg p "$pid" --arg c "$ISSUE_NODE_ID" '{p:$p, c:$c}')" | jq -r .data.addProjectV2ItemById.item.id)
+          gql 'mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p, itemId:$i, fieldId:$f, value:{singleSelectOptionId:$o}}){ projectV2Item { id } } }' \
+            "$(jq -n --arg p "$pid" --arg i "$item" --arg f "$fid" --arg o "$oid" '{p:$p, i:$i, f:$f, o:$o}')" > /dev/null
           echo "Issue set to $STATUS"
