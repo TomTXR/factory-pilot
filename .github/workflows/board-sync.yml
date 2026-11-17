@@ -44,30 +44,13 @@ jobs:
           if [ "$ACTION" != "labeled" ]; then s="${s:-Inbox}"; fi
           echo "status=$s" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@v5
+        if: steps.map.outputs.status != ''
+        with:
+          sparse-checkout: .github/scripts
+
       - name: Update board
         if: steps.map.outputs.status != ''
         env:
-          TOKEN: ${{ secrets.PROJECT_TOKEN }}
-          STATUS: ${{ steps.map.outputs.status }}
-          ISSUE_NODE_ID: ${{ github.event.issue.node_id }}
-        # Plain GraphQL via curl: the token only has the "project" scope, and the
-        # gh project commands demand read:org / read:discussion on the client side.
-        run: |
-          if [ -z "$TOKEN" ]; then echo "::warning::PROJECT_TOKEN not set, skipping board sync"; exit 0; fi
-          gql() {
-            out=$(curl -sS -H "Authorization: bearer $TOKEN" -H "Content-Type: application/json" \
-              https://api.github.com/graphql -d "$(jq -n --arg q "$1" --argjson v "$2" '{query:$q, variables:$v}')")
-            if [ "$(echo "$out" | jq '.errors // [] | length')" != "0" ]; then echo "$out" | jq -c .errors >&2; exit 1; fi
-            echo "$out"
-          }
-          p=$(gql 'query($login:String!,$n:Int!){ user(login:$login){ projectV2(number:$n){ id field(name:"Status"){ ... on ProjectV2SingleSelectField { id options { id name } } } } } }' \
-            "$(jq -n --arg l "$PROJECT_LOGIN" --argjson n "$PROJECT_NUMBER" '{login:$l, n:$n}')")
-          pid=$(echo "$p" | jq -r .data.user.projectV2.id)
-          fid=$(echo "$p" | jq -r .data.user.projectV2.field.id)
-          oid=$(echo "$p" | jq -r --arg s "$STATUS" '.data.user.projectV2.field.options[] | select(.name==$s) | .id')
-          [ -n "$oid" ] || { echo "::error::Status option '$STATUS' not found on the board"; exit 1; }
-          item=$(gql 'mutation($p:ID!,$c:ID!){ addProjectV2ItemById(input:{projectId:$p, contentId:$c}){ item { id } } }' \
-            "$(jq -n --arg p "$pid" --arg c "$ISSUE_NODE_ID" '{p:$p, c:$c}')" | jq -r .data.addProjectV2ItemById.item.id)
-          gql 'mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p, itemId:$i, fieldId:$f, value:{singleSelectOptionId:$o}}){ projectV2Item { id } } }' \
-            "$(jq -n --arg p "$pid" --arg i "$item" --arg f "$fid" --arg o "$oid" '{p:$p, i:$i, f:$f, o:$o}')" > /dev/null
-          echo "Issue set to $STATUS"
+          PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        run: .github/scripts/board-status.sh "${{ github.event.issue.node_id }}" "${{ steps.map.outputs.status }}"
