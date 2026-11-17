@@ -1,0 +1,129 @@
+name: Deploy
+
+# Runs after CI. main -> production, PR -> preview. Closed PR -> preview removed.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  PREVIEW_DOMAIN: domigo.com
+
+jobs:
+  deploy:
+    # Only green CI runs from this repository (never from forks).
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-${{ github.event.workflow_run.event }}-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    steps:
+      - name: Resolve target
+        id: target
+        env:
+          EVENT: ${{ github.event.workflow_run.event }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          if [ "$EVENT" = "push" ] && [ "$BRANCH" = "main" ]; then
+            echo "args=deploy prod $SHA" >> "$GITHUB_OUTPUT"
+            echo "host=pilot.$PREVIEW_DOMAIN" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = "pull_request" ] && [ -n "$PR_NUMBER" ]; then
+            echo "args=deploy pr $PR_NUMBER $SHA" >> "$GITHUB_OUTPUT"
+            echo "host=pilot-pr-$PR_NUMBER.$PREVIEW_DOMAIN" >> "$GITHUB_OUTPUT"
+            echo "pr=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure preview DNS record
+        if: steps.target.outputs.pr != '' && steps.target.outputs.skip != 'true'
+        env:
+          CF_DNS_TOKEN: ${{ secrets.CF_DNS_TOKEN }}
+          CF_ZONE_ID: ${{ vars.CF_ZONE_ID }}
+          FACTORY_IP: ${{ vars.FACTORY_IP }}
+          HOST: ${{ steps.target.outputs.host }}
+        run: |
+          if [ -z "$CF_DNS_TOKEN" ]; then echo "::warning::CF_DNS_TOKEN not set, skipping DNS"; exit 0; fi
+          api="https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records"
+          existing=$(curl -fsS -H "Authorization: Bearer $CF_DNS_TOKEN" "$api?type=A&name=$HOST" | jq -r '.result[0].id // empty')
+          if [ -z "$existing" ]; then
+            curl -fsS -X POST -H "Authorization: Bearer $CF_DNS_TOKEN" -H "Content-Type: application/json" "$api" \
+              -d "{\"type\":\"A\",\"name\":\"$HOST\",\"content\":\"$FACTORY_IP\",\"proxied\":true,\"ttl\":1,\"comment\":\"factory-pilot preview\"}" > /dev/null
+            echo "created $HOST"
+          else
+            echo "exists $HOST"
+          fi
+
+      - name: Deploy over SSH
+        if: steps.target.outputs.skip != 'true'
+        env:
+          SSH_KEY: ${{ secrets.FACTORY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.FACTORY_KNOWN_HOSTS }}
+          FACTORY_IP: ${{ vars.FACTORY_IP }}
+          ARGS: ${{ steps.target.outputs.args }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key "deploy@$FACTORY_IP" "$ARGS"
+
+      - name: Smoke check
+        if: steps.target.outputs.skip != 'true'
+        env:
+          HOST: ${{ steps.target.outputs.host }}
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "https://$HOST/api/health" | grep -q '"status":"ok"'; then echo "healthy: https://$HOST"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::https://$HOST did not become healthy"; exit 1
+
+      - name: Post preview link on the PR
+        if: steps.target.outputs.pr != '' && steps.target.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.target.outputs.pr }}
+          HOST: ${{ steps.target.outputs.host }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          body="Preview ready: https://$HOST (commit ${SHA:0:7}). CI passed."
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --body "$body" 2>/dev/null \
+            || gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "$body"
+
+  cleanup:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove preview
+        env:
+          SSH_KEY: ${{ secrets.FACTORY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.FACTORY_KNOWN_HOSTS }}
+          FACTORY_IP: ${{ vars.FACTORY_IP }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key "deploy@$FACTORY_IP" "destroy pr $PR"
+
+      - name: Remove preview DNS record
+        env:
+          CF_DNS_TOKEN: ${{ secrets.CF_DNS_TOKEN }}
+          CF_ZONE_ID: ${{ vars.CF_ZONE_ID }}
+          HOST: pilot-pr-${{ github.event.pull_request.number }}.${{ env.PREVIEW_DOMAIN }}
+        run: |
+          if [ -z "$CF_DNS_TOKEN" ]; then echo "::warning::CF_DNS_TOKEN not set, skipping DNS"; exit 0; fi
+          api="https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records"
+          id=$(curl -fsS -H "Authorization: Bearer $CF_DNS_TOKEN" "$api?type=A&name=$HOST" | jq -r '.result[0].id // empty')
+          if [ -n "$id" ]; then curl -fsS -X DELETE -H "Authorization: Bearer $CF_DNS_TOKEN" "$api/$id" > /dev/null; echo "deleted $HOST"; fi

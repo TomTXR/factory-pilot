@@ -1,0 +1,40 @@
+# Edge proxy on the factory VM. Installed to /srv/edge/Caddyfile.
+# __FACTORY_USER__ and __FACTORY_PASS_HASH__ are replaced on the server; the hash never enters git.
+{
+	on_demand_tls {
+		ask http://127.0.0.1:5555/allow
+	}
+}
+
+# Only preview hosts may get on-demand certificates.
+http://127.0.0.1:5555 {
+	bind 127.0.0.1
+	@allowed expression `{query.domain}.matches("^pilot-pr-[0-9]{1,6}\\.domigo\\.com$")`
+	respond @allowed 200
+	respond 404
+}
+
+factory.domigo.com {
+	basic_auth {
+		__FACTORY_USER__ __FACTORY_PASS_HASH__
+	}
+	respond "Factory UI not installed yet." 200
+}
+
+pilot.domigo.com {
+	reverse_proxy pilot-prod-web:80
+}
+
+# Previews: pilot-pr-<n>.domigo.com -> container alias pilot-pr-<n>-web on the factory-edge network.
+https:// {
+	tls {
+		on_demand
+	}
+	@pr header_regexp pr Host ^pilot-pr-([0-9]{1,6})\.domigo\.com$
+	handle @pr {
+		reverse_proxy pilot-pr-{re.pr.1}-web:80
+	}
+	handle {
+		respond 404
+	}
+}

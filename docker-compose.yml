@@ -1,0 +1,40 @@
+# Local and CI stack. The server adds docker-compose.server.yml on top.
+name: ${COMPOSE_PROJECT_NAME:-pilot-dev}
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: pilot
+      POSTGRES_USER: pilot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pilot}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pilot -d pilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgres://pilot:${POSTGRES_PASSWORD:-pilot}@db:5432/pilot
+      APP_VERSION: ${APP_VERSION:-dev}
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 256m
+
+  web:
+    build: ./web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    mem_limit: 128m
+
+volumes:
+  db-data:

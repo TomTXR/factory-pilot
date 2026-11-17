@@ -1,0 +1,15 @@
+# Server overlay: no host ports; the web container joins the shared edge network
+# under a unique alias (pilot-prod-web, pilot-pr-<n>-web) that Caddy routes to.
+services:
+  web:
+    ports: !reset []
+    networks:
+      default: {}
+      edge:
+        aliases:
+          - ${EDGE_ALIAS:?EDGE_ALIAS must be set}
+
+networks:
+  edge:
+    name: factory-edge
+    external: true

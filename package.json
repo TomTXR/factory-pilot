@@ -1,0 +1,24 @@
+{
+  "name": "factory-pilot",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "setup": "npm ci && npm --prefix api ci && npm --prefix web ci",
+    "lint": "eslint .",
+    "typecheck": "npm --prefix api run typecheck && npm --prefix web run typecheck",
+    "test": "npm --prefix api test && npm --prefix web test",
+    "e2e": "playwright test",
+    "up": "docker compose up -d --build --wait",
+    "down": "docker compose down -v"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "@playwright/test": "^1.55.0",
+    "eslint": "^9.35.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.4.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.43.0"
+  }
+}

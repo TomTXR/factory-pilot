@@ -1,0 +1,24 @@
+import js from '@eslint/js';
+import reactHooks from 'eslint-plugin-react-hooks';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  { ignores: ['**/dist/**', '**/node_modules/**', 'playwright-report/**', 'test-results/**'] },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ['api/**/*.ts', 'e2e/**/*.ts', '*.config.{js,ts}'],
+    languageOptions: { globals: globals.node },
+  },
+  {
+    files: ['web/**/*.{ts,tsx}'],
+    languageOptions: { globals: globals.browser },
+    plugins: { 'react-hooks': reactHooks },
+    rules: reactHooks.configs.recommended.rules,
+  },
+  {
+    // Structured logging only (see AGENTS.md).
+    rules: { 'no-console': 'error' },
+  },
+);
