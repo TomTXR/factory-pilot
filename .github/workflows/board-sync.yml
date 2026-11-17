@@ -1,0 +1,61 @@
+name: Board sync
+
+# Mirrors the factory:* state label of an issue into the Status column of the
+# "Factory Pilot" project board, and adds new issues to the board.
+# Labels are the source of truth; the board is a view.
+on:
+  issues:
+    types: [opened, reopened, labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: board-sync-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+env:
+  PROJECT_OWNER: TomTXR
+  PROJECT_NUMBER: "1"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Map label to status
+        id: map
+        env:
+          LABEL: ${{ github.event.label.name }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          case "$LABEL" in
+            factory:story) s="Inbox" ;;
+            factory:breakdown) s="Breakdown" ;;
+            factory:plan-review) s="Plan Review" ;;
+            factory:plan-approved|factory:in-progress) s="In Progress" ;;
+            factory:agent-review) s="Agent Review" ;;
+            factory:human-review) s="Human Review" ;;
+            factory:rework) s="Rework" ;;
+            factory:approved-for-production|factory:deploying) s="Deploying" ;;
+            factory:done) s="Done" ;;
+            factory:blocked) s="Blocked" ;;
+            *) s="" ;;
+          esac
+          if [ "$ACTION" != "labeled" ]; then s="${s:-Inbox}"; fi
+          echo "status=$s" >> "$GITHUB_OUTPUT"
+
+      - name: Update board
+        if: steps.map.outputs.status != ''
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          STATUS: ${{ steps.map.outputs.status }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::warning::PROJECT_TOKEN not set, skipping board sync"; exit 0; fi
+          item=$(gh project item-add "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --url "$ISSUE_URL" --format json --jq .id)
+          pid=$(gh project view "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json --jq .id)
+          fields=$(gh project field-list "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json)
+          fid=$(echo "$fields" | jq -r '.fields[] | select(.name=="Status") | .id')
+          oid=$(echo "$fields" | jq -r --arg s "$STATUS" '.fields[] | select(.name=="Status") | .options[] | select(.name==$s) | .id')
+          gh project item-edit --id "$item" --project-id "$pid" --field-id "$fid" --single-select-option-id "$oid" > /dev/null
+          echo "Issue set to $STATUS"
