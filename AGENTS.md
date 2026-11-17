@@ -36,6 +36,15 @@ Run from the repo root.
 
 All of `lint`, `typecheck`, `test` and `e2e` must pass before a PR is ready. CI runs the same commands.
 
+## Knowledge
+
+`knowledge/` is the project's shared knowledge wiki (product, domain, users, decisions, lessons). How to read and write it: `.agents/skills/wiki/SKILL.md` (also available as the `wiki` skill).
+
+1. Before making a product, domain or user assumption, read `knowledge/wiki/index.md` and the relevant articles. If the wiki has no answer, ask in the issue.
+2. List the articles you used under "Context used" in the ticket spec.
+3. When a story is done, run the skill's **capture** operation so that answers and decisions become knowledge.
+4. Never edit `knowledge/raw/` after creation. Wiki changes go through the PR like code.
+
 ## Rules
 
 1. TypeScript strict everywhere. No `any` unless commented why.
@@ -66,5 +75,6 @@ Reviewers (human or agent) check, in this order:
 3. **Data safety:** migrations are additive and new files only; no data loss; inputs validated at the API boundary.
 4. **Security:** no secrets in code, no SQL built by string concatenation (use the tagged `sql` template), no unvalidated user input in queries or HTML.
 5. **Rules above:** logger instead of console, no emojis, strict types, mobile layout.
+6. **Knowledge:** behaviour that contradicts `knowledge/wiki/` is a P1 unless the issue explicitly changes it; then the wiki must be updated in the same PR.
 
 Report only real problems, ranked P0 (must fix: bug, data loss, security) and P1 (should fix: missing test, rule violation). Do not report style preferences.
