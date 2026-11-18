@@ -67,6 +67,7 @@ jobs:
           echo "number=$pr" >> "$GITHUB_OUTPUT"
 
       - name: Bring the PR up to date and wait for required checks
+        id: ready
         env:
           PR: ${{ steps.pr.outputs.number }}
         run: |
@@ -76,7 +77,15 @@ jobs:
             state=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json mergeStateStatus --jq .mergeStateStatus)
             case "$state" in
               CLEAN|HAS_HOOKS|UNSTABLE) echo "mergeable: $state"; exit 0 ;;
-              DIRTY|BLOCKED_BY_FAILURE) break ;;
+              DIRTY)
+                # Conflict with main (e.g. another story was merged first): the builder
+                # resolves it, then the story returns to agent review and a new test
+                # request. The human approves again, because the code changed.
+                .github/scripts/factory-flow.sh rework "$ISSUE" "$(printf 'The release of PR #%s was stopped: it conflicts with the current `main` (another change was merged first). Merge the current `main` into this branch, resolve the conflicts so that both the existing features on `main` and this story work, run all checks, and push.' "$PR")"
+                gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "The approved release could not be merged: PR #$PR conflicts with the current \`main\`. The builder resolves the conflict now. Because the code changes, you will get a new test request and need to approve again."
+                echo "conflict=true" >> "$GITHUB_OUTPUT"
+                exit 0 ;;
+              BLOCKED_BY_FAILURE) break ;;
             esac
             if gh pr checks "$PR" --repo "$GITHUB_REPOSITORY" --required 2>/dev/null | awk '{print $2}' | grep -q fail; then break; fi
             sleep 15
@@ -88,6 +97,7 @@ jobs:
 
       - name: Merge
         id: merge
+        if: steps.ready.outputs.conflict != 'true'
         env:
           PR: ${{ steps.pr.outputs.number }}
         run: |
@@ -102,6 +112,7 @@ jobs:
   # so deploy and cleanup run here as reusable workflow calls.
   deploy:
     needs: land
+    if: needs.land.outputs.sha != ''
     uses: ./.github/workflows/deploy-target.yml
     with:
       kind: prod
@@ -110,6 +121,7 @@ jobs:
 
   cleanup:
     needs: land
+    if: needs.land.outputs.sha != ''
     uses: ./.github/workflows/preview-cleanup.yml
     with:
       pr: ${{ needs.land.outputs.pr }}
