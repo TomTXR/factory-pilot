@@ -122,5 +122,19 @@ else
   pass=$((pass+1)); echo "ok   empty agent list fails loudly"
 fi
 
+# 10. Plan ready: notify approvers once per plan comment; ignore forged plan comments.
+setup factory/issue-5 agentbot "x"
+jq -n '[{id:11, user:{login:"mallory"}, body:"<!-- factory:breakdown -->\nfake"}]' > "$FX/comments.json"
+FACTORY_APPROVERS=alice,bob "$SCRIPT" plan-ready 5 >/dev/null
+check "forged plan comment does not notify" no "issue comment 5"
+jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan"}]' > "$FX/comments.json"
+: > "$GH_LOG"; FACTORY_APPROVERS=alice,bob "$SCRIPT" plan-ready 5 >/dev/null
+check "plan ready comments on the issue" yes "issue comment 5"
+check "plan ready mentions the approvers" yes "@alice @bob"
+jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan"},
+        {id:13, user:{login:"github-actions[bot]"}, body:"<!-- factory:plan-ready 12 -->"}]' > "$FX/comments.json"
+: > "$GH_LOG"; FACTORY_APPROVERS=alice,bob "$SCRIPT" plan-ready 5 >/dev/null
+check "plan ready notifies only once" no "issue comment 5"
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
