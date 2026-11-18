@@ -1,0 +1,59 @@
+name: Factory flow
+
+# State transitions between agent steps (see .github/scripts/factory-flow.sh).
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: factory-flow-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+  PROJECT_LOGIN: TomTXR
+  PROJECT_NUMBER: "1"
+
+jobs:
+  pr-updated:
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'factory/issue-') && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      - run: .github/scripts/factory-flow.sh pr-updated "${{ github.event.pull_request.number }}"
+
+  review:
+    if: github.event_name == 'pull_request_review' && startsWith(github.event.pull_request.head.ref, 'factory/issue-')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      - run: .github/scripts/factory-flow.sh review "${{ github.event.pull_request.number }}" "${{ github.event.review.id }}"
+
+  human-rework:
+    # A human asks for changes: label factory:rework plus a comment on the issue.
+    if: github.event_name == 'issues' && github.event.label.name == 'factory:rework' && github.event.sender.type == 'User'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      - env:
+          ISSUE: ${{ github.event.issue.number }}
+          SENDER: ${{ github.event.sender.login }}
+        run: |
+          last=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --jq "[.[] | select(.user.login==\"$SENDER\")] | last | .html_url // \"\"")
+          .github/scripts/factory-flow.sh rework "$ISSUE" "Rework requested by @$SENDER. See the latest comment: $last"
