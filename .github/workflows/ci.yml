@@ -27,6 +27,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - name: Factory flow script tests
+        run: bash tests/factory-flow.test.sh
 
   e2e:
     needs: checks
