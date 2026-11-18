@@ -1,14 +1,25 @@
 import { Hono } from 'hono';
+import { logger } from './logger.js';
+import { isUuid, type PropertyRepository, validateProperty } from './properties.js';
 
 export interface AppDeps {
   /** Returns true when the database answers a trivial query. */
   checkDb: () => Promise<boolean>;
+  properties: PropertyRepository;
   version: string;
 }
+
+const DUPLICATE = { error: 'This property already exists' };
+const NOT_FOUND = { error: 'Property not found' };
 
 /** Builds the HTTP app. Dependencies are injected so routes can be tested without a database. */
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono().basePath('/api');
+
+  app.onError((err, c) => {
+    logger.error('request failed', { path: c.req.path, error: String(err) });
+    return c.json({ error: 'Internal server error' }, 500);
+  });
 
   app.get('/health', async (c) => {
     let db = false;
@@ -21,6 +32,40 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   app.get('/version', (c) => c.json({ version: deps.version }));
+
+  app.get('/properties', async (c) => c.json(await deps.properties.list()));
+
+  app.post('/properties', async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const result = validateProperty(body);
+    if (!result.ok) return c.json({ errors: result.errors }, 400);
+    const created = await deps.properties.create(result.value);
+    if (created === 'duplicate') return c.json(DUPLICATE, 409);
+    return c.json(created, 201);
+  });
+
+  app.get('/properties/:id', async (c) => {
+    const id = c.req.param('id');
+    const property = isUuid(id) ? await deps.properties.get(id) : null;
+    return property ? c.json(property) : c.json(NOT_FOUND, 404);
+  });
+
+  app.put('/properties/:id', async (c) => {
+    const id = c.req.param('id');
+    const body: unknown = await c.req.json().catch(() => null);
+    const result = validateProperty(body);
+    if (!result.ok) return c.json({ errors: result.errors }, 400);
+    if (!isUuid(id)) return c.json(NOT_FOUND, 404);
+    const updated = await deps.properties.update(id, result.value);
+    if (updated === 'duplicate') return c.json(DUPLICATE, 409);
+    return updated ? c.json(updated) : c.json(NOT_FOUND, 404);
+  });
+
+  app.delete('/properties/:id', async (c) => {
+    const id = c.req.param('id');
+    const removed = isUuid(id) ? await deps.properties.remove(id) : false;
+    return removed ? c.body(null, 204) : c.json(NOT_FOUND, 404);
+  });
 
   return app;
 }

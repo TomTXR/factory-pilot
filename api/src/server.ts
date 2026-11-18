@@ -3,6 +3,7 @@ import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { checkDb, connect, migrate } from './db.js';
 import { logger } from './logger.js';
+import { createPropertyRepository } from './propertyRepository.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -23,7 +24,7 @@ try {
   process.exit(1);
 }
 
-const app = createApp({ checkDb: () => checkDb(sql), version });
+const app = createApp({ checkDb: () => checkDb(sql), properties: createPropertyRepository(sql), version });
 
 serve({ fetch: app.fetch, port }, (info) => {
   logger.info('api listening', { port: info.port, version });
