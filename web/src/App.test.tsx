@@ -18,8 +18,8 @@ describe('App', () => {
   });
 
   it('shows the version in the footer', async () => {
-    render(<App loadHealth={async () => 'ok'} loadVersion={async () => 'abc1234'} />);
-    expect(await screen.findByText('Version abc1234')).toBeInTheDocument();
+    render(<App loadHealth={async () => 'ok'} loadVersion={async () => '1.2.3'} />);
+    expect(await screen.findByText('Version 1.2.3')).toBeInTheDocument();
   });
 
   it('shows Version unknown when the version is unavailable', async () => {

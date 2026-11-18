@@ -15,7 +15,7 @@ for (const [name, size] of [
     await page.setViewportSize(size);
     await page.goto('/');
     const footer = page.getByTestId('app-version');
-    await expect(footer).toHaveText(/^Version \S+$/);
+    await expect(footer).toHaveText(/^Version \d+\.\d+\.\d+$/);
     await expect(footer).toBeInViewport();
     const noOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,

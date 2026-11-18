@@ -5,13 +5,8 @@ const respond = (body: unknown, init?: ResponseInit) =>
   (async () => new Response(JSON.stringify(body), init)) as unknown as typeof fetch;
 
 describe('fetchVersion', () => {
-  it('returns a short value unchanged', async () => {
-    expect(await fetchVersion(respond({ version: 'dev' }))).toBe('dev');
-  });
-
-  it('shortens a full commit sha to 7 characters', async () => {
-    const sha = '0123456789abcdef0123456789abcdef01234567';
-    expect(await fetchVersion(respond({ version: sha }))).toBe('0123456');
+  it('returns the semantic version unchanged', async () => {
+    expect(await fetchVersion(respond({ version: '1.2.3' }))).toBe('1.2.3');
   });
 
   it('returns null on a network error', async () => {

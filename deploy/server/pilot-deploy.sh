@@ -61,7 +61,6 @@ if [ ! -f "$envfile" ]; then
   ( umask 077; printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > "$envfile" )
 fi
 set -a; . "$envfile"; set +a
-export APP_VERSION="$sha"
 
 log info "deploying $project at $sha"
 compose up -d --build --wait --remove-orphans
