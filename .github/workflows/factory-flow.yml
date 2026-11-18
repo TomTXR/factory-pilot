@@ -7,7 +7,7 @@ on:
   pull_request_review:
     types: [submitted]
   issues:
-    types: [labeled, opened]
+    types: [labeled, opened, closed, reopened]
 
 permissions:
   contents: read
@@ -90,3 +90,42 @@ jobs:
         with:
           sparse-checkout: .github/scripts
       - run: .github/scripts/factory-flow.sh start "${{ github.event.issue.number }}"
+
+  closed:
+    # Closed by anyone: not planned -> cancelled (PRs closed, previews removed),
+    # completed -> board Done. A close done by the factory itself (GITHUB_TOKEN)
+    # triggers no event; that path runs the same script inline.
+    if: github.event_name == 'issues' && github.event.action == 'closed' && contains(github.event.issue.labels.*.name, 'factory:story')
+    runs-on: ubuntu-latest
+    outputs:
+      prs: ${{ steps.run.outputs.prs }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      - id: run
+        env:
+          REASON: ${{ github.event.issue.state_reason }}
+        run: |
+          out=$(mktemp); GITHUB_OUTPUT="$out" .github/scripts/factory-flow.sh closed "${{ github.event.issue.number }}" "$REASON"
+          echo "prs=$(grep '^cleanup_pr=' "$out" | cut -d= -f2 | jq -Rsc 'split("\n") | map(select(length>0))')" >> "$GITHUB_OUTPUT"
+
+  closed-cleanup:
+    needs: closed
+    if: needs.closed.outputs.prs != '' && needs.closed.outputs.prs != '[]'
+    strategy:
+      matrix:
+        pr: ${{ fromJSON(needs.closed.outputs.prs) }}
+    uses: ./.github/workflows/preview-cleanup.yml
+    with:
+      pr: ${{ matrix.pr }}
+    secrets: inherit
+
+  reopened:
+    if: github.event_name == 'issues' && github.event.action == 'reopened' && contains(github.event.issue.labels.*.name, 'factory:story')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      - run: .github/scripts/factory-flow.sh reopened "${{ github.event.issue.number }}"

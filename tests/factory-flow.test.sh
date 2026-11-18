@@ -217,5 +217,39 @@ jq -n '{node_id:"I_test", user:{login:"alice"}, labels:[{name:"factory:story"},{
 "$SCRIPT" start 5 >/dev/null
 check "S2 start does not reset a story in progress" no "issue edit"
 
+# ---- Closing, cancelling, reopening ------------------------------------------
+setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue.json"
+GITHUB_OUTPUT="$WORK/out" "$SCRIPT" closed 5 not_planned >/dev/null
+check "X1 not planned -> cancelled label" yes "add-label factory:cancelled"
+check "X1 not planned -> plan-review removed" yes "remove-label factory:plan-review"
+check "X1 not planned closes the story's open PR" yes "pr close 16"
+check "X1 does not touch other stories' PRs" no "pr close 17"
+out_has cleanup_pr=16 && { pass=$((pass+1)); echo "ok   X1 preview cleanup requested"; } || { fail=$((fail+1)); echo "FAIL X1 missing cleanup output"; }
+
+setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:cancelled"}]}' > "$FX/issue.json"
+"$SCRIPT" closed 5 not_planned >/dev/null
+check "X2 already cancelled: no action" no "issue edit|pr close"
+
+setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:human-review"}]}' > "$FX/issue.json"
+"$SCRIPT" closed 5 completed >/dev/null
+check "X3 closed as completed clears state labels" yes "remove-label factory:human-review"
+check "X3 closed as completed keeps PRs" no "pr close"
+
+cmd factory:human-review alice "/cancel duplicate of #3"
+check "X4 /cancel closes the issue as not planned" yes "issue close 5 --repo owner/repo --reason not planned"
+check "X4 /cancel sets cancelled" yes "add-label factory:cancelled"
+
+cmd factory:plan-review alice "please close this, created by mistake" cancel
+check "X5 inferred cancel only asks for /cancel" no "issue close"
+check "X5 inferred cancel asks" yes "needs an explicit decision"
+
+cmd factory:done alice "/cancel"
+check "X6 /cancel on a done story: no close" no "issue close"
+
+setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:cancelled"}]}' > "$FX/issue.json"
+"$SCRIPT" reopened 5 >/dev/null
+check "X7 reopened clears cancelled" yes "remove-label factory:cancelled"
+check "X7 reopened explains /start" yes "factory:reopened"
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

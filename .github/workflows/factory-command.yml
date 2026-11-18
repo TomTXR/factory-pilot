@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       land: ${{ steps.run.outputs.land }}
+      prs: ${{ steps.run.outputs.prs }}
     env:
       GH_TOKEN: ${{ github.token }}
       FACTORY_AGENT_LOGINS: ${{ vars.FACTORY_AGENT_LOGINS }}
@@ -43,7 +44,13 @@ jobs:
       - id: run
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: .github/scripts/factory-flow.sh command "${{ github.event.issue.number }}" "${{ github.event.comment.id }}"
+        run: |
+          # Each step has its own output file: collect the script's outputs here,
+          # including PRs closed by /cancel (closing by GITHUB_TOKEN triggers no event).
+          out=$(mktemp)
+          GITHUB_OUTPUT="$out" .github/scripts/factory-flow.sh command "${{ github.event.issue.number }}" "${{ github.event.comment.id }}"
+          grep '^land=' "$out" >> "$GITHUB_OUTPUT" || true
+          echo "prs=$(grep '^cleanup_pr=' "$out" | cut -d= -f2 | jq -Rsc 'split("\n") | map(select(length>0))')" >> "$GITHUB_OUTPUT"
 
   land:
     needs: command
@@ -52,4 +59,15 @@ jobs:
     with:
       issue: ${{ github.event.issue.number }}
       approver: ${{ github.event.comment.user.login }}
+    secrets: inherit
+
+  cleanup:
+    needs: command
+    if: needs.command.outputs.prs != '' && needs.command.outputs.prs != '[]'
+    strategy:
+      matrix:
+        pr: ${{ fromJSON(needs.command.outputs.prs) }}
+    uses: ./.github/workflows/preview-cleanup.yml
+    with:
+      pr: ${{ matrix.pr }}
     secrets: inherit
