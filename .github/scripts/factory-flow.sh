@@ -21,6 +21,8 @@
 #   factory-flow.sh plan-ready <issue>       breakdown posted a plan: notify approvers
 #   factory-flow.sh start <issue>            new story: start the breakdown
 #   factory-flow.sh command <issue> <id>     a comment by a human on a story issue
+#   factory-flow.sh closed <issue> <reason>  issue closed (completed | not_planned)
+#   factory-flow.sh reopened <issue>         issue reopened
 #
 # Humans steer only with comments: /approve, /changes <text>, /retry, or plain
 # text whose intent classify-intent.sh infers at the two gates. Production
@@ -35,7 +37,7 @@ MAX_REWORK=3
 BOT="${FACTORY_BOT_LOGIN:-github-actions[bot]}"
 AGENTS="${FACTORY_AGENT_LOGINS:-}"
 REVIEW_MARKER='<!-- openhands-review-run:'
-STATE_LABELS="factory:breakdown factory:plan-review factory:plan-approved factory:in-progress factory:agent-review factory:human-review factory:rework factory:approved-for-production factory:deploying factory:blocked"
+STATE_LABELS="factory:breakdown factory:plan-review factory:plan-approved factory:in-progress factory:agent-review factory:human-review factory:rework factory:approved-for-production factory:deploying factory:blocked factory:done factory:cancelled"
 here="$(cd "$(dirname "$0")" && pwd)"
 
 board() { "$here/board-status.sh" "$(gh api "repos/$R/issues/$1" | jq -r .node_id)" "$2" || echo "::warning::board update failed"; }
@@ -62,7 +64,7 @@ open_factory_prs() { # issue -> PR numbers on factory/issue-<n> (builder's branc
 }
 current_state() { # issue -> one factory state (without factory: prefix), or inbox
   local labels; labels=$(gh api "repos/$R/issues/$1" | jq -r '[.labels[].name] | join(" ")')
-  for st in blocked approved-for-production deploying human-review agent-review rework plan-approved in-progress plan-review breakdown done; do
+  for st in cancelled done blocked approved-for-production deploying human-review agent-review rework plan-approved in-progress plan-review breakdown; do
     case " $labels " in *" factory:$st "*) echo "$st"; return;; esac
   done
   echo inbox
@@ -203,12 +205,13 @@ case "$cmd" in
     if ! is_approver "$author" || [ "$(echo "$c" | jq -r .user.type)" != "User" ]; then echo "ignored: $author is not an approver"; exit 0; fi
     if bot_comments "$issue" | jq -e --arg m "<!-- factory:ack $cid -->" 'any(.[]; contains($m))' >/dev/null; then echo "already handled"; exit 0; fi
     state=$(current_state "$issue")
-    cmd_line=$(printf '%s\n' "$body" | grep -ioE '^[[:space:]]*/(approve|changes|retry|start)\b' | head -1 | tr -d '[:space:]' | tr 'A-Z' 'a-z' || true)
+    cmd_line=$(printf '%s\n' "$body" | grep -ioE '^[[:space:]]*/(approve|changes|retry|start|cancel)\b' | head -1 | tr -d '[:space:]' | tr 'A-Z' 'a-z' || true)
     explicit=yes; intent=""; summary=""
     case "$cmd_line" in
       /approve|/start) intent=approve ;;
       /changes) intent=changes ;;
       /retry) intent=retry ;;
+      /cancel) intent=cancel ;;
       *) explicit=no ;;
     esac
     echo "comment $cid by $author in state $state: command=${cmd_line:-none}"
@@ -258,6 +261,16 @@ case "$cmd" in
           set_state "$issue" factory:breakdown; board "$issue" Breakdown
           ack "$issue" "$cid" "**Retry** by @$author. The breakdown agent starts again."
         fi ;;
+      done:cancel|cancelled:cancel)
+        ack "$issue" "$cid" "This story is already closed (**$state**)." ;;
+      *:cancel)
+        if [ "$explicit" = yes ]; then
+          ack "$issue" "$cid" "**Story cancelled** by @$author. Open pull requests are closed and previews removed."
+          "$0" closed "$issue" not_planned
+          gh issue close "$issue" --repo "$R" --reason "not planned" >/dev/null
+        else
+          ack "$issue" "$cid" "${read_as}Cancelling a story needs an explicit decision. Reply \`/cancel\` to close it as not planned, or \`/changes <what>\` to change it."
+        fi ;;
       plan-review:unclear|human-review:unclear)
         ack "$issue" "$cid" "${read_as}No action taken. Reply \`/approve\` to proceed or \`/changes <what>\` to request changes." ;;
       *)
@@ -267,5 +280,35 @@ case "$cmd" in
     esac
     ;;
 
-  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command ..." >&2; exit 2 ;;
+  closed)
+    # A story was closed by anyone. not_planned: cancelled, stop all work.
+    # completed without the factory's deploy: show it as done.
+    issue="$1"; reason="${2:-completed}"
+    state=$(current_state "$issue")
+    if [ "$reason" = not_planned ]; then
+      [ "$state" = cancelled ] && { echo "issue #$issue already cancelled"; exit 0; }
+      prs=$(open_factory_prs "$issue")
+      for pr in $prs; do
+        gh pr close "$pr" --repo "$R" --comment "Closed: story #$issue was cancelled." >/dev/null
+        emit "cleanup_pr=$pr"
+      done
+      set_state "$issue" factory:cancelled; board "$issue" Cancelled
+      echo "issue #$issue -> cancelled (closed PRs: ${prs:-none})"
+    else
+      [ "$state" = done ] && { echo "issue #$issue already done"; exit 0; }
+      for old in $STATE_LABELS; do gh issue edit "$issue" --repo "$R" --remove-label "$old" >/dev/null 2>&1 || true; done
+      board "$issue" Done
+      echo "issue #$issue closed as completed -> board Done"
+    fi
+    ;;
+
+  reopened)
+    issue="$1"
+    for old in $STATE_LABELS; do gh issue edit "$issue" --repo "$R" --remove-label "$old" >/dev/null 2>&1 || true; done
+    board "$issue" Inbox
+    gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:reopened -->\n**Story reopened.** It waits in the inbox. Reply \`/start\` to start the breakdown.')" >/dev/null
+    echo "issue #$issue reopened -> inbox"
+    ;;
+
+  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command|closed|reopened ..." >&2; exit 2 ;;
 esac

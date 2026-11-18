@@ -39,6 +39,7 @@ jobs:
             factory:approved-for-production|factory:deploying) s="Deploying" ;;
             factory:done) s="Done" ;;
             factory:blocked) s="Blocked" ;;
+            factory:cancelled) s="Cancelled" ;;
             *) s="" ;;
           esac
           if [ "$ACTION" != "labeled" ]; then s="${s:-Inbox}"; fi
