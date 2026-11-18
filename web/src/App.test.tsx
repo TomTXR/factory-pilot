@@ -81,6 +81,21 @@ describe('App', () => {
     expect(await screen.findByText('API: ok')).toBeInTheDocument();
   });
 
+  it('shows the version in the footer', async () => {
+    render(<App loadHealth={ok} loadVersion={async () => '1.2.3'} api={fakeApi()} />);
+    expect(await screen.findByText('Version 1.2.3')).toBeInTheDocument();
+  });
+
+  it('shows Version unknown when the version is unavailable', async () => {
+    render(<App loadHealth={ok} loadVersion={async () => null} api={fakeApi()} />);
+    expect(await screen.findByText('Version unknown')).toBeInTheDocument();
+  });
+
+  it('shows no version while it is loading', () => {
+    render(<App loadHealth={ok} loadVersion={() => new Promise(() => {})} api={fakeApi()} />);
+    expect(screen.queryByTestId('app-version')).not.toBeInTheDocument();
+  });
+
   it('shows unreachable when the API cannot be reached', async () => {
     render(<App loadHealth={async () => 'unreachable'} api={fakeApi()} />);
     expect(await screen.findByText('API: unreachable')).toBeInTheDocument();

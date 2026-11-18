@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
@@ -12,7 +13,9 @@ if (!databaseUrl) {
 }
 
 const port = Number(process.env.PORT ?? 3000);
-const version = process.env.APP_VERSION ?? 'dev';
+const { version } = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+) as { version: string };
 const migrationsDir = fileURLToPath(new URL('../migrations', import.meta.url));
 
 const sql = connect(databaseUrl);
