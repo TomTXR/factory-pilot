@@ -22,6 +22,7 @@ concurrency:
 env:
   GH_TOKEN: ${{ github.token }}
   FACTORY_AGENT_LOGINS: ${{ vars.FACTORY_AGENT_LOGINS }}
+  FACTORY_APPROVERS: ${{ vars.FACTORY_APPROVERS }}
   PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
   PROJECT_LOGIN: TomTXR
   PROJECT_NUMBER: "1"
@@ -65,3 +66,13 @@ jobs:
           fi
           last=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --jq "[.[] | select(.user.login==\"$SENDER\")] | last | .html_url // \"\"")
           .github/scripts/factory-flow.sh rework "$ISSUE" "Rework requested by @$SENDER. See the latest comment: $last"
+
+  plan-ready:
+    # The breakdown agent moved the story to the human gate.
+    if: github.event_name == 'issues' && github.event.label.name == 'factory:plan-review'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      - run: .github/scripts/factory-flow.sh plan-ready "${{ github.event.issue.number }}"

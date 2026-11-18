@@ -18,6 +18,7 @@
 # commit status software-factory/review on its head is failure/error. This
 # script sets that status; it never restarts the builder while a PR is open.
 #   factory-flow.sh ready-check <pr>         preview deployed: ready for human?
+#   factory-flow.sh plan-ready <issue>       breakdown posted a plan: notify approvers
 # Env: GH_TOKEN, GITHUB_REPOSITORY, FACTORY_AGENT_LOGINS (comma list),
 #      optional FACTORY_BOT_LOGIN, PROJECT_TOKEN, PROJECT_LOGIN, PROJECT_NUMBER,
 #      PREVIEW_HEALTH_CMD (tests only)
@@ -140,5 +141,19 @@ case "$cmd" in
     echo "issue #$issue -> human review"
     ;;
 
-  *) echo "usage: $0 pr-updated|review|rework|ready-check ..." >&2; exit 2 ;;
+  plan-ready)
+    # Agent actions run as the operator account, which GitHub never notifies about
+    # its own actions. A comment by this automation with an @mention does notify.
+    issue="$1"
+    plan_id=$(gh api "repos/$R/issues/$issue/comments" --paginate | jq -rs --arg agents ",$AGENTS," \
+      '[.[][] | (.user.login | ascii_downcase) as $u | select(($agents | ascii_downcase | contains("," + $u + ",")) and (.body | startswith("<!-- factory:breakdown -->")))] | last | .id // empty')
+    [ -n "$plan_id" ] || { echo "no plan comment by an agent yet"; exit 0; }
+    marker="<!-- factory:plan-ready $plan_id -->"
+    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "already notified"; exit 0; fi
+    mentions=$(echo "${FACTORY_APPROVERS:-}" | tr ',' '\n' | sed '/^$/d; s/^/@/' | paste -sd' ' -)
+    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Plan ready for your review** %s\n\nPlease read the plan above and answer open questions in a comment. Then set one label:\n\n- `factory:plan-approved` to start building, or\n- `factory:breakdown` again for a refined plan that includes your answers.' "$marker" "$mentions")" >/dev/null
+    echo "issue #$issue: approvers notified (plan comment $plan_id)"
+    ;;
+
+  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready ..." >&2; exit 2 ;;
 esac
