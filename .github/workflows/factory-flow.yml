@@ -31,11 +31,16 @@ jobs:
   pr-updated:
     if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'factory/issue-') && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    outputs:
+      prs: ${{ steps.run.outputs.prs }}
     steps:
       - uses: actions/checkout@v5
         with:
           sparse-checkout: .github/scripts
-      - run: .github/scripts/factory-flow.sh pr-updated "${{ github.event.pull_request.number }}"
+      - id: run
+        run: |
+          out=$(mktemp); GITHUB_OUTPUT="$out" .github/scripts/factory-flow.sh pr-updated "${{ github.event.pull_request.number }}"
+          echo "prs=$(grep '^cleanup_pr=' "$out" | cut -d= -f2 | jq -Rsc 'split("\n") | map(select(length>0))')" >> "$GITHUB_OUTPUT"
 
   review:
     if: github.event_name == 'pull_request_review' && startsWith(github.event.pull_request.head.ref, 'factory/issue-')
@@ -129,3 +134,15 @@ jobs:
         with:
           sparse-checkout: .github/scripts
       - run: .github/scripts/factory-flow.sh reopened "${{ github.event.issue.number }}"
+
+  pr-updated-cleanup:
+    # A late builder PR on a cancelled story was closed above: remove its preview.
+    needs: pr-updated
+    if: needs.pr-updated.outputs.prs != '' && needs.pr-updated.outputs.prs != '[]'
+    strategy:
+      matrix:
+        pr: ${{ fromJSON(needs.pr-updated.outputs.prs) }}
+    uses: ./.github/workflows/preview-cleanup.yml
+    with:
+      pr: ${{ matrix.pr }}
+    secrets: inherit
