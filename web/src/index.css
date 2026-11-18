@@ -1,1 +1,32 @@
 @import 'tailwindcss';
+
+@layer components {
+  .label {
+    @apply mb-1 block text-sm font-medium text-slate-700;
+  }
+  .input {
+    @apply block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 shadow-sm;
+    @apply focus:border-blue-600 focus:outline-2 focus:outline-offset-1 focus:outline-blue-600;
+    @apply aria-[invalid=true]:border-red-600;
+  }
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-danger-solid {
+    @apply inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-base font-medium;
+    @apply focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600;
+    @apply disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-primary {
+    @apply bg-blue-700 text-white hover:bg-blue-800;
+  }
+  .btn-secondary {
+    @apply border border-slate-300 bg-white text-slate-800 hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply border border-red-300 bg-white text-red-700 hover:bg-red-50;
+  }
+  .btn-danger-solid {
+    @apply bg-red-700 text-white hover:bg-red-800;
+  }
+}

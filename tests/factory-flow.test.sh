@@ -17,8 +17,9 @@ if [ "$1" = "api" ]; then
     */pulls/*/reviews) cat "$FX/reviews.json" ;;
     */pulls\?*) cat "$FX/open_pulls.json" ;;
     */pulls/*) cat "$FX/pull.json" ;;
+    */issues/comments/*) cat "$FX/comment.json" ;;
     */issues/*/comments) cat "$FX/comments.json" ;;
-    */issues/*) echo '{"node_id":"I_test"}' ;;
+    */issues/*) if [ -f "$FX/issue.json" ]; then cat "$FX/issue.json"; else echo '{"node_id":"I_test","labels":[]}'; fi ;;
     *) echo '{}' ;;
   esac
 fi
@@ -34,7 +35,7 @@ setup() { # head_ref review_author review_body
   : > "$GH_LOG"
   jq -n --arg ref "$1" '{state:"open", head:{ref:$ref, sha:"sha1"}}' > "$FX/pull.json"
   jq -n --arg u "$2" --arg b "$3" '{user:{login:$u}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"
-  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"
+  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX/issue.json" "$FX/comment.json" "$WORK/out"
   jq -n '[{number:16, head:{ref:"factory/issue-5"}}, {number:17, head:{ref:"factory/issue-50"}}]' > "$FX/open_pulls.json"
 }
 check() { # name expected(yes|no) pattern
@@ -121,6 +122,100 @@ if FACTORY_AGENT_LOGINS= PREVIEW_HEALTH_CMD=true "$SCRIPT" ready-check 16 >/dev/
 else
   pass=$((pass+1)); echo "ok   empty agent list fails loudly"
 fi
+
+# 10. Plan ready: notify approvers once per plan comment; ignore forged plan comments.
+setup factory/issue-5 agentbot "x"
+jq -n '[{id:11, user:{login:"mallory"}, body:"<!-- factory:breakdown -->\nfake"}]' > "$FX/comments.json"
+FACTORY_APPROVERS=alice,bob "$SCRIPT" plan-ready 5 >/dev/null
+check "forged plan comment does not notify" no "issue comment 5"
+jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan"}]' > "$FX/comments.json"
+: > "$GH_LOG"; FACTORY_APPROVERS=alice,bob "$SCRIPT" plan-ready 5 >/dev/null
+check "plan ready comments on the issue" yes "issue comment 5"
+check "plan ready mentions the approvers" yes "@alice @bob"
+jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan"},
+        {id:13, user:{login:"github-actions[bot]"}, body:"<!-- factory:plan-ready 12 -->"}]' > "$FX/comments.json"
+: > "$GH_LOG"; FACTORY_APPROVERS=alice,bob "$SCRIPT" plan-ready 5 >/dev/null
+check "plan ready notifies only once" no "issue comment 5"
+
+# 11. Plan ready without approvers fails loudly and writes no marker.
+jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan"}]' > "$FX/comments.json"
+: > "$GH_LOG"
+if FACTORY_APPROVERS= "$SCRIPT" plan-ready 5 >/dev/null 2>&1; then
+  fail=$((fail+1)); echo "FAIL empty approver list must exit non-zero"
+else
+  pass=$((pass+1)); echo "ok   empty approver list fails loudly"
+fi
+check "no marker without approvers" no "issue comment 5"
+
+# ---- Comment commands -------------------------------------------------------
+cat > "$WORK/bin/classify-stub" <<'STUB'
+#!/usr/bin/env bash
+echo "$1" >> "$CLASSIFY_LOG"; printf '{"intent":"%s","summary":"stub"}\n' "$CLASSIFY_INTENT"
+STUB
+chmod +x "$WORK/bin/classify-stub"
+export CLASSIFY_CMD="$WORK/bin/classify-stub" CLASSIFY_LOG="$WORK/classify.log" FACTORY_APPROVERS=alice
+cmd() { # state-label author body [intent]
+  setup factory/issue-5 agentbot "x"; : > "$CLASSIFY_LOG"
+  jq -n --arg l "$1" '{node_id:"I_test", labels:([{name:"factory:story"}] + (if $l == "" then [] else [{name:$l}] end))}' > "$FX/issue.json"
+  jq -n --arg u "$2" --arg b "$3" '{user:{login:$u, type:"User"}, body:$b, html_url:"https://x/c"}' > "$FX/comment.json"
+  CLASSIFY_INTENT="${4:-unclear}" GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+}
+out_has() { grep -q "$1" "$WORK/out" 2>/dev/null; }
+
+cmd factory:plan-review mallory "/approve"
+check "C1 non-approver command ignored" no "issue (edit|comment)"
+
+cmd factory:plan-review alice "/approve"
+check "C2 /approve at plan review starts builder" yes "add-label factory:plan-approved"
+check "C2 acknowledged" yes "factory:ack 900"
+
+cmd factory:plan-review alice "Please also add a delete dialog" changes
+check "C3 inferred changes at plan review -> refined plan" yes "add-label factory:breakdown"
+grep -q plan-review "$CLASSIFY_LOG" && { pass=$((pass+1)); echo "ok   C3 classifier called with state"; } || { fail=$((fail+1)); echo "FAIL C3 classifier not called"; }
+
+cmd factory:human-review alice "Works, ship it" approve
+check "C4 inferred approve at human review does not release" no "add-label factory:approved-for-production"
+check "C4 asks for explicit /approve" yes "explicit decision"
+out_has land=true && { fail=$((fail+1)); echo "FAIL C4 must not land"; } || { pass=$((pass+1)); echo "ok   C4 no land output"; }
+
+cmd factory:human-review alice "/approve"
+check "C5 explicit /approve at human review releases" yes "add-label factory:approved-for-production"
+out_has land=true && { pass=$((pass+1)); echo "ok   C5 land output"; } || { fail=$((fail+1)); echo "FAIL C5 missing land output"; }
+
+cmd factory:human-review alice "/changes the footer is too small"
+check "C6 /changes at human review -> revise PR" yes "statuses/sha1 -f state=failure"
+[ -s "$CLASSIFY_LOG" ] && { fail=$((fail+1)); echo "FAIL C6 classifier must not run for explicit command"; } || { pass=$((pass+1)); echo "ok   C6 no classifier for explicit command"; }
+
+cmd factory:plan-review alice "/approve"; jq -n '[{user:{login:"github-actions[bot]"}, body:"<!-- factory:ack 900 -->\ndone"}]' > "$FX/comments.json"
+: > "$GH_LOG"; GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "C7 already handled comment is not processed twice" no "issue (edit|comment)"
+
+cmd factory:agent-review alice "just a note while you work"
+check "C8 plain comment while agents work: no action" no "issue (edit|comment)"
+[ -s "$CLASSIFY_LOG" ] && { fail=$((fail+1)); echo "FAIL C8 classifier must not run outside gates"; } || { pass=$((pass+1)); echo "ok   C8 no classifier outside gates"; }
+
+cmd "" alice "/start"
+check "C9 /start on a new story starts breakdown" yes "add-label factory:breakdown"
+
+cmd factory:blocked alice "/retry"
+check "C10 /retry when blocked with open PR -> revise" yes "statuses/sha1 -f state=failure"
+
+cmd factory:plan-review alice "what does point 3 mean?" unclear
+check "C11 unclear at plan review: no state change" no "issue edit"
+check "C11 unclear: explains the commands" yes "No action taken"
+
+setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", user:{login:"alice"}, labels:[{name:"factory:story"}]}' > "$FX/issue.json"
+"$SCRIPT" start 5 >/dev/null
+check "S1 new story by approver starts breakdown" yes "add-label factory:breakdown"
+jq -n '{node_id:"I_test", user:{login:"mallory"}, labels:[{name:"factory:story"}]}' > "$FX/issue.json"; : > "$GH_LOG"
+"$SCRIPT" start 5 >/dev/null
+check "S3 story by a stranger does not start" no "issue edit"
+cmd "" alice "/approve"; jq -n '{node_id:"I_test", user:{login:"mallory"}, labels:[{name:"factory:story"}]}' > "$FX/issue.json"
+: > "$GH_LOG"; GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "S4 approver /approve starts a stranger's story" yes "add-label factory:breakdown"
+jq -n '{node_id:"I_test", user:{login:"alice"}, labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue.json"; : > "$GH_LOG"
+"$SCRIPT" start 5 >/dev/null
+check "S2 start does not reset a story in progress" no "issue edit"
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

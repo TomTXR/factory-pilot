@@ -13,3 +13,6 @@ Append-only. Newest entries at the bottom.
 - Raw: raw/users/2026-11-17-interview-owner-anna.md
 - Updated: Home Maintenance Log
 - Updated: GO Value Categories
+
+## [2026-11-18] ingest | Home Maintenance Log
+- Raw: raw/stories/2026-11-18-story-20-manage-properties.md

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
+import { memoryRepository } from './testing.js';
 
 describe('GET /api/health', () => {
   it('returns ok when the database answers', async () => {
-    const app = createApp({ checkDb: async () => true, version: 'test' });
+    const app = createApp({ checkDb: async () => true, properties: memoryRepository(), version: 'test' });
     const res = await app.request('/api/health');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'ok', db: true });
@@ -14,6 +15,7 @@ describe('GET /api/health', () => {
       checkDb: async () => {
         throw new Error('connection refused');
       },
+      properties: memoryRepository(),
       version: 'test',
     });
     const res = await app.request('/api/health');
@@ -24,7 +26,7 @@ describe('GET /api/health', () => {
 
 describe('GET /api/version', () => {
   it('returns the configured version', async () => {
-    const app = createApp({ checkDb: async () => true, version: 'abc123' });
+    const app = createApp({ checkDb: async () => true, properties: memoryRepository(), version: 'abc123' });
     const res = await app.request('/api/version');
     expect(await res.json()).toEqual({ version: 'abc123' });
   });
