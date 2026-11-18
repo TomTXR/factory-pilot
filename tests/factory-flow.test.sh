@@ -136,5 +136,15 @@ jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan"
 : > "$GH_LOG"; FACTORY_APPROVERS=alice,bob "$SCRIPT" plan-ready 5 >/dev/null
 check "plan ready notifies only once" no "issue comment 5"
 
+# 11. Plan ready without approvers fails loudly and writes no marker.
+jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan"}]' > "$FX/comments.json"
+: > "$GH_LOG"
+if FACTORY_APPROVERS= "$SCRIPT" plan-ready 5 >/dev/null 2>&1; then
+  fail=$((fail+1)); echo "FAIL empty approver list must exit non-zero"
+else
+  pass=$((pass+1)); echo "ok   empty approver list fails loudly"
+fi
+check "no marker without approvers" no "issue comment 5"
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
