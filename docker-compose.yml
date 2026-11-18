@@ -21,7 +21,6 @@ services:
     build: ./api
     environment:
       DATABASE_URL: postgres://pilot:${POSTGRES_PASSWORD:-pilot}@db:5432/pilot
-      APP_VERSION: ${APP_VERSION:-dev}
     depends_on:
       db:
         condition: service_healthy

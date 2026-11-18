@@ -3,6 +3,7 @@ import {
   type ApiStatus,
   createPropertiesApi,
   fetchHealth,
+  fetchVersion,
   type Property,
   type PropertiesApi,
   type PropertyFormValues,
@@ -45,12 +46,15 @@ type Load = 'loading' | 'error' | 'ready';
 
 export function App({
   loadHealth = fetchHealth,
+  loadVersion = fetchVersion,
   api = defaultApi,
 }: {
   loadHealth?: () => Promise<ApiStatus>;
+  loadVersion?: () => Promise<string | null>;
   api?: PropertiesApi;
 }) {
   const [status, setStatus] = useState<ApiStatus>('loading');
+  const [version, setVersion] = useState<string | null | undefined>(undefined);
   const [properties, setProperties] = useState<Property[]>([]);
   const [load, setLoad] = useState<Load>('loading');
   const [selectedId, setSelectedId] = useState<string | null>(storedSelection);
@@ -68,6 +72,16 @@ export function App({
       active = false;
     };
   }, [loadHealth]);
+
+  useEffect(() => {
+    let active = true;
+    loadVersion().then((v) => {
+      if (active) setVersion(v);
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadVersion]);
 
   const select = useCallback((id: string | null) => {
     setSelectedId(id);
@@ -205,6 +219,11 @@ export function App({
           onConfirm={() => void confirmDelete()}
           onCancel={() => setDeleting(false)}
         />
+      )}
+      {version !== undefined && (
+        <footer data-testid="app-version" className="mt-8 break-words text-sm text-slate-600">
+          Version {version ?? 'unknown'}
+        </footer>
       )}
     </main>
   );

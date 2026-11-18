@@ -10,6 +10,17 @@ export async function fetchHealth(fetchFn: typeof fetch = fetch): Promise<ApiSta
   }
 }
 
+export async function fetchVersion(fetchFn: typeof fetch = fetch): Promise<string | null> {
+  try {
+    const res = await fetchFn('/api/version');
+    if (!res.ok) return null;
+    const body = (await res.json()) as { version?: unknown };
+    return typeof body.version === 'string' ? body.version : null;
+  } catch {
+    return null;
+  }
+}
+
 export type Country = 'NL' | 'DE';
 export type PropertyType = 'house' | 'apartment' | 'other';
 
