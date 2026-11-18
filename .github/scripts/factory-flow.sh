@@ -151,6 +151,10 @@ case "$cmd" in
     marker="<!-- factory:plan-ready $plan_id -->"
     if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "already notified"; exit 0; fi
     mentions=$(echo "${FACTORY_APPROVERS:-}" | tr ',' '\n' | sed '/^$/d; s/^/@/' | paste -sd' ' -)
+    if [ -z "$mentions" ]; then
+      # Without approvers the notification would reach nobody; fail before writing the marker.
+      echo "::error::FACTORY_APPROVERS is empty; cannot notify approvers" >&2; exit 1
+    fi
     gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Plan ready for your review** %s\n\nPlease read the plan above and answer open questions in a comment. Then set one label:\n\n- `factory:plan-approved` to start building, or\n- `factory:breakdown` again for a refined plan that includes your answers.' "$marker" "$mentions")" >/dev/null
     echo "issue #$issue: approvers notified (plan comment $plan_id)"
     ;;
