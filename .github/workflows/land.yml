@@ -101,7 +101,15 @@ jobs:
         env:
           PR: ${{ steps.pr.outputs.number }}
         run: |
-          gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --rebase --delete-branch
+          # Squash: works for any mergeable PR, also when the builder resolved a conflict
+          # with a merge commit (rebase fails then: "This branch can't be rebased"),
+          # and keeps the linear history that branch protection requires.
+          if ! gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --squash --delete-branch; then
+            gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:approved-for-production --add-label factory:blocked
+            .github/scripts/board-status.sh "$NODE" Blocked
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "The approved release of PR #$PR could not be merged (see the Land run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). Nothing was deployed. Reply \`/retry\` after the cause is fixed."
+            exit 1
+          fi
           sha=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json mergeCommit --jq .mergeCommit.oid)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:approved-for-production --add-label factory:deploying
