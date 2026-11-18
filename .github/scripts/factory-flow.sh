@@ -60,6 +60,10 @@ preview_healthy() {
 }
 
 cmd="${1:-}"; shift || true
+if [ -z "$AGENTS" ] && { [ "$cmd" = review ] || [ "$cmd" = ready-check ]; }; then
+  # Without the agent list no review can count; fail loudly instead of silently stalling.
+  echo "::error::FACTORY_AGENT_LOGINS is empty; cannot evaluate agent reviews" >&2; exit 1
+fi
 case "$cmd" in
   pr-updated)
     pr="$1"; issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || { echo "not a factory PR"; exit 0; }

@@ -107,6 +107,7 @@ jobs:
         if: inputs.kind == 'preview'
         env:
           GH_TOKEN: ${{ github.token }}
+          FACTORY_AGENT_LOGINS: ${{ vars.FACTORY_AGENT_LOGINS }}
           PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           PROJECT_LOGIN: TomTXR
           PROJECT_NUMBER: "1"

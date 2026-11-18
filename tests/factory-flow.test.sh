@@ -114,5 +114,13 @@ setup feature/x agentbot "$M
 "$SCRIPT" review 16 1 >/dev/null
 check "non-factory PR ignored" no "issue (edit|comment)"
 
+# 9. Missing FACTORY_AGENT_LOGINS fails loudly instead of silently matching nothing.
+setup factory/issue-5 agentbot "x"
+if FACTORY_AGENT_LOGINS= PREVIEW_HEALTH_CMD=true "$SCRIPT" ready-check 16 >/dev/null 2>&1; then
+  fail=$((fail+1)); echo "FAIL empty agent list must exit non-zero"
+else
+  pass=$((pass+1)); echo "ok   empty agent list fails loudly"
+fi
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
