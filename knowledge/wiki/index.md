@@ -8,7 +8,7 @@ What the app is, its scope and requirements.
 
 | Article | Summary | Updated |
 |---------|---------|---------|
-| [Home Maintenance Log](product/home-maintenance-log.md) | Product scope v1: data model, requirements, out of scope (SYNTHETIC) | 2026-11-17 |
+| [Home Maintenance Log](product/home-maintenance-log.md) | Product scope v1: data model, property rules, requirements, out of scope (SYNTHETIC) | 2026-11-18 |
 
 ## domain
 
