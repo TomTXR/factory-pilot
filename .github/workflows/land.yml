@@ -72,7 +72,7 @@ jobs:
           PR: ${{ steps.pr.outputs.number }}
         run: |
           state=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json mergeStateStatus --jq .mergeStateStatus)
-          if [ "$state" = "BEHIND" ]; then gh pr update-branch "$PR" --repo "$GITHUB_REPOSITORY" --rebase; sleep 15; fi
+          if [ "$state" = "BEHIND" ]; then gh pr update-branch "$PR" --repo "$GITHUB_REPOSITORY"; sleep 15; fi  # merge, not rebase: branches may contain merge commits
           for i in $(seq 1 100); do
             state=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json mergeStateStatus --jq .mergeStateStatus)
             case "$state" in
