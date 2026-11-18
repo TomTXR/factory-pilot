@@ -251,5 +251,28 @@ setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", labels:[{name:"fac
 check "X7 reopened clears cancelled" yes "remove-label factory:cancelled"
 check "X7 reopened explains /start" yes "factory:reopened"
 
+# X8. Duplicate is handled like not planned.
+setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:human-review"}]}' > "$FX/issue.json"
+GITHUB_OUTPUT="$WORK/out" "$SCRIPT" closed 5 duplicate >/dev/null
+check "X8 duplicate -> cancelled" yes "add-label factory:cancelled"
+check "X8 duplicate closes the PR" yes "pr close 16"
+
+# X9. In-flight builder PR on a cancelled story is closed, state stays cancelled.
+setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:cancelled"}]}' > "$FX/issue.json"
+GITHUB_OUTPUT="$WORK/out" "$SCRIPT" pr-updated 16 >/dev/null
+check "X9 late PR on cancelled story is closed" yes "pr close 16"
+check "X9 cancelled story stays cancelled" no "remove-label factory:cancelled|add-label factory:agent-review"
+out_has cleanup_pr=16 && { pass=$((pass+1)); echo "ok   X9 preview cleanup requested"; } || { fail=$((fail+1)); echo "FAIL X9 missing cleanup output"; }
+
+# X10. Reviews, readiness and plan notices are ignored on a cancelled story.
+setup factory/issue-5 agentbot "$M
+✅ APPROVED"; jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:cancelled"}]}' > "$FX/issue.json"
+jq -n --arg m "$M" '[{commit_id:"sha1", user:{login:"agentbot"}, body:($m+"\n✅ APPROVED")}]' > "$FX/reviews.json"
+PREVIEW_HEALTH_CMD=true "$SCRIPT" review 16 1 >/dev/null
+PREVIEW_HEALTH_CMD=true "$SCRIPT" ready-check 16 >/dev/null
+jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan"}]' > "$FX/comments.json"
+FACTORY_APPROVERS=alice "$SCRIPT" plan-ready 5 >/dev/null
+check "X10 no transitions on a cancelled story" no "issue (edit|comment)|statuses"
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

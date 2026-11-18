@@ -21,7 +21,7 @@
 #   factory-flow.sh plan-ready <issue>       breakdown posted a plan: notify approvers
 #   factory-flow.sh start <issue>            new story: start the breakdown
 #   factory-flow.sh command <issue> <id>     a comment by a human on a story issue
-#   factory-flow.sh closed <issue> <reason>  issue closed (completed | not_planned)
+#   factory-flow.sh closed <issue> <reason>  issue closed (completed | not_planned | duplicate)
 #   factory-flow.sh reopened <issue>         issue reopened
 #
 # Humans steer only with comments: /approve, /changes <text>, /retry, or plain
@@ -93,6 +93,14 @@ fi
 case "$cmd" in
   pr-updated)
     pr="$1"; issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || { echo "not a factory PR"; exit 0; }
+    case "$(current_state "$issue")" in
+      cancelled)
+        # Agent work that was in flight when the story was cancelled: stop it here.
+        gh pr close "$pr" --repo "$R" --comment "Closed: story #$issue was cancelled." >/dev/null
+        emit "cleanup_pr=$pr"
+        echo "issue #$issue is cancelled: closed PR #$pr"; exit 0 ;;
+      done) echo "issue #$issue is done: no state change"; exit 0 ;;
+    esac
     gh pr edit "$pr" --repo "$R" --add-label factory:agent-review >/dev/null
     set_state "$issue" factory:agent-review; board "$issue" "Agent Review"
     echo "issue #$issue -> agent review (PR #$pr)"
@@ -100,6 +108,7 @@ case "$cmd" in
 
   review)
     pr="$1"; rid="$2"; issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || { echo "not a factory PR"; exit 0; }
+    case "$(current_state "$issue")" in cancelled|done) echo "issue #$issue is closed: ignored"; exit 0 ;; esac
     review=$(gh api "repos/$R/pulls/$pr/reviews/$rid")
     author=$(echo "$review" | jq -r .user.login); body=$(echo "$review" | jq -r .body); url=$(echo "$review" | jq -r .html_url)
     if ! is_agent "$author" || ! printf '%s' "$body" | grep -qF "$REVIEW_MARKER"; then
@@ -149,6 +158,7 @@ case "$cmd" in
 
   ready-check)
     pr="$1"; issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || { echo "not a factory PR"; exit 0; }
+    case "$(current_state "$issue")" in cancelled|done) echo "issue #$issue is closed: ignored"; exit 0 ;; esac
     prj=$(gh api "repos/$R/pulls/$pr")
     [ "$(echo "$prj" | jq -r .state)" = "open" ] || { echo "PR closed"; exit 0; }
     head=$(echo "$prj" | jq -r .head.sha)
@@ -170,6 +180,7 @@ case "$cmd" in
     # Agent actions run as the operator account, which GitHub never notifies about
     # its own actions. A comment by this automation with an @mention does notify.
     issue="$1"
+    case "$(current_state "$issue")" in cancelled|done) echo "issue #$issue is closed: ignored"; exit 0 ;; esac
     plan_id=$(gh api "repos/$R/issues/$issue/comments" --paginate | jq -rs --arg agents ",$AGENTS," \
       '[.[][] | (.user.login | ascii_downcase) as $u | select(($agents | ascii_downcase | contains("," + $u + ",")) and (.body | startswith("<!-- factory:breakdown -->")))] | last | .id // empty')
     [ -n "$plan_id" ] || { echo "no plan comment by an agent yet"; exit 0; }
@@ -285,7 +296,7 @@ case "$cmd" in
     # completed without the factory's deploy: show it as done.
     issue="$1"; reason="${2:-completed}"
     state=$(current_state "$issue")
-    if [ "$reason" = not_planned ]; then
+    if [ "$reason" = not_planned ] || [ "$reason" = duplicate ]; then
       [ "$state" = cancelled ] && { echo "issue #$issue already cancelled"; exit 0; }
       prs=$(open_factory_prs "$issue")
       for pr in $prs; do
