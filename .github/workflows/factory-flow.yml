@@ -79,7 +79,11 @@ jobs:
 
   start:
     # A new story starts the breakdown without any label work by the human.
-    if: github.event_name == 'issues' && github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'factory:story')
+    # Only stories opened by approvers start on their own (public repository).
+    if: >
+      github.event_name == 'issues' && github.event.action == 'opened' &&
+      contains(github.event.issue.labels.*.name, 'factory:story') &&
+      contains(format(',{0},', vars.FACTORY_APPROVERS), format(',{0},', github.event.issue.user.login))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
