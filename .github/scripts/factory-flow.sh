@@ -13,6 +13,10 @@
 #   factory-flow.sh pr-updated <pr>          factory PR opened or pushed
 #   factory-flow.sh review <pr> <review-id>  a review was published
 #   factory-flow.sh rework <issue> <reason>  changes requested (agent or approver)
+#
+# The builder automation revises an open PR on factory/issue-<n> when the
+# commit status software-factory/review on its head is failure/error. This
+# script sets that status; it never restarts the builder while a PR is open.
 #   factory-flow.sh ready-check <pr>         preview deployed: ready for human?
 # Env: GH_TOKEN, GITHUB_REPOSITORY, FACTORY_AGENT_LOGINS (comma list),
 #      optional FACTORY_BOT_LOGIN, PROJECT_TOKEN, PROJECT_LOGIN, PROJECT_NUMBER,
@@ -43,6 +47,12 @@ is_agent() { echo ",$AGENTS," | grep -qi ",$1,"; }
 bot_comments() { # issue -> JSON array of comment bodies written by this automation
   gh api "repos/$R/issues/$1/comments" --paginate | jq -s --arg bot "$BOT" '[.[][] | select(.user.login == $bot) | .body]'
 }
+review_status() { # sha state description
+  gh api -X POST "repos/$R/statuses/$1" -f state="$2" -f context=software-factory/review -f description="$3" >/dev/null
+}
+open_factory_prs() { # issue -> PR numbers on factory/issue-<n> (builder's branch)
+  gh api "repos/$R/pulls?state=open&per_page=100" | jq -r --arg ref "factory/issue-$1" '.[] | select(.head.ref == $ref) | .number'
+}
 verdict_of() { printf '%s' "$1" | grep -oE '(✅ APPROVED|🔄 CHANGES REQUESTED|⏸ INCONCLUSIVE)' | tail -1 || true; }
 preview_healthy() {
   if [ -n "${PREVIEW_HEALTH_CMD:-}" ]; then $PREVIEW_HEALTH_CMD "$1"; return; fi
@@ -71,7 +81,9 @@ case "$cmd" in
       "🔄 CHANGES REQUESTED")
         reason=$(printf 'The reviewer agent requested changes on PR #%s: %s\n\n<details><summary>Review</summary>\n\n%s\n\n</details>' "$pr" "$url" "$body")
         "$0" rework "$issue" "$reason" ;;
-      "✅ APPROVED") "$0" ready-check "$pr" ;;
+      "✅ APPROVED")
+        review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" success "Reviewer agent approved"
+        "$0" ready-check "$pr" ;;
       "⏸ INCONCLUSIVE")
         set_state "$issue" factory:blocked; board "$issue" Blocked
         gh issue comment "$issue" --repo "$R" --body "Blocked: the reviewer agent could not reach a verdict on PR #$pr ($url). A human must decide." >/dev/null ;;
@@ -83,14 +95,24 @@ case "$cmd" in
     issue="$1"; reason="$2"
     n=$(bot_comments "$issue" | jq '[.[] | select(contains("<!-- factory:rework -->"))] | length')
     if [ "$n" -ge "$MAX_REWORK" ]; then
+      for pr in $(open_factory_prs "$issue"); do review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" pending "Blocked: rework limit reached"; done
       set_state "$issue" factory:blocked; board "$issue" Blocked
       gh issue comment "$issue" --repo "$R" --body "Blocked: $n rework loops reached the limit of $MAX_REWORK. A human must decide how to continue." >/dev/null
       echo "issue #$issue -> blocked (rework limit)"; exit 0
     fi
-    for pr in $(gh api "repos/$R/pulls?state=open&per_page=100" | jq -r --arg re "^factory/issue-$issue(-[0-9]+)?$" '.[] | select(.head.ref | test($re)) | .number'); do
-      gh pr close "$pr" --repo "$R" --comment "Superseded: rework requested on #$issue. The builder starts a fresh attempt." >/dev/null
-    done
-    gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:rework -->\n**Rework %s of %s.** The builder starts a fresh attempt from `main` and reads this thread.\n\n%s' "$((n+1))" "$MAX_REWORK" "$reason")" >/dev/null
+    prs=$(open_factory_prs "$issue")
+    if [ -n "$prs" ]; then
+      # Revise the open PR: the builder picks it up when the review status is failure.
+      for pr in $prs; do
+        gh pr comment "$pr" --repo "$R" --body "$(printf '<!-- factory:rework -->\n**Changes requested (rework %s of %s).** Address this in this PR:\n\n%s' "$((n+1))" "$MAX_REWORK" "$reason")" >/dev/null
+        review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" failure "Changes requested (rework $((n+1)) of $MAX_REWORK)"
+      done
+      gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:rework -->\n**Rework %s of %s.** The builder revises PR #%s.\n\n%s' "$((n+1))" "$MAX_REWORK" "$(echo $prs | tr ' ' ',')" "$reason")" >/dev/null
+      set_state "$issue" factory:rework; board "$issue" Rework
+      echo "issue #$issue -> rework $((n+1)), builder revises PR $prs"; exit 0
+    fi
+    # No open PR (e.g. the builder judged the story unclear): start the builder again.
+    gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:rework -->\n**Rework %s of %s.** No open PR; the builder starts again from `main` and reads this thread.\n\n%s' "$((n+1))" "$MAX_REWORK" "$reason")" >/dev/null
     set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
     echo "issue #$issue -> rework $((n+1)), builder re-triggered"
     ;;

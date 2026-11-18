@@ -35,7 +35,7 @@ setup() { # head_ref review_author review_body
   jq -n --arg ref "$1" '{state:"open", head:{ref:$ref, sha:"sha1"}}' > "$FX/pull.json"
   jq -n --arg u "$2" --arg b "$3" '{user:{login:$u}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"
   echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"
-  jq -n '[{number:16, head:{ref:"factory/issue-5"}}]' > "$FX/open_pulls.json"
+  jq -n '[{number:16, head:{ref:"factory/issue-5"}}, {number:17, head:{ref:"factory/issue-50"}}]' > "$FX/open_pulls.json"
 }
 check() { # name expected(yes|no) pattern
   if grep -qE -- "$3" "$GH_LOG"; then got=yes; else got=no; fi
@@ -54,14 +54,29 @@ setup factory/issue-5 agentbot "🔄 CHANGES REQUESTED"
 "$SCRIPT" review 16 1 >/dev/null
 check "unmarked agent review ignored" no "pr close"
 
-# 3. Agent CHANGES REQUESTED -> rework: close PR, comment, re-trigger builder, clear blocked.
+# 3. Agent CHANGES REQUESTED with an open builder PR -> revise that PR (no close).
 setup factory/issue-5 agentbot "$M
 🔄 CHANGES REQUESTED"
 "$SCRIPT" review 16 1 >/dev/null
-check "rework closes open factory PR" yes "pr close 16"
-check "rework comments on issue" yes "issue comment 5"
-check "rework re-triggers builder" yes "issue edit 5 --repo owner/repo --add-label factory:plan-approved"
+check "rework does not close the PR" no "pr close"
+check "rework posts findings on the PR" yes "pr comment 16"
+check "rework leaves other issues' PRs alone" no "pr comment 17"
+check "rework sets review status failure" yes "statuses/sha1 -f state=failure -f context=software-factory/review"
+check "rework moves issue to rework" yes "issue edit 5 --repo owner/repo --add-label factory:rework"
 check "rework clears blocked" yes "issue edit 5 --repo owner/repo --remove-label factory:blocked"
+
+# 3b. No open builder PR -> builder starts again via the trigger label.
+setup factory/issue-5 agentbot "$M
+🔄 CHANGES REQUESTED"
+echo '[]' > "$FX/open_pulls.json"
+"$SCRIPT" review 16 1 >/dev/null
+check "no PR: builder re-triggered" yes "issue edit 5 --repo owner/repo --add-label factory:plan-approved"
+
+# 3c. Agent APPROVED sets the review status success.
+setup factory/issue-5 agentbot "$M
+✅ APPROVED"
+PREVIEW_HEALTH_CMD=false "$SCRIPT" review 16 1 >/dev/null
+check "approval sets review status success" yes "statuses/sha1 -f state=success"
 
 # 4. Forged rework markers from other accounts do not count towards the limit.
 setup factory/issue-5 agentbot "$M
@@ -77,6 +92,7 @@ jq -n '[range(3) | {user:{login:"github-actions[bot]"}, body:"<!-- factory:rewor
 "$SCRIPT" review 16 1 >/dev/null
 check "rework limit blocks" yes "add-label factory:blocked"
 check "rework limit does not close PR" no "pr close"
+check "rework limit stops builder revisions" yes "statuses/sha1 -f state=pending"
 
 # 6. ready-check ignores a forged approval on the head.
 setup factory/issue-5 agentbot "x"
