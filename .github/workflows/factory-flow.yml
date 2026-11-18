@@ -20,6 +20,7 @@ concurrency:
 
 env:
   GH_TOKEN: ${{ github.token }}
+  FACTORY_AGENT_LOGINS: ${{ vars.FACTORY_AGENT_LOGINS }}
   PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
   PROJECT_LOGIN: TomTXR
   PROJECT_NUMBER: "1"
@@ -54,6 +55,12 @@ jobs:
       - env:
           ISSUE: ${{ github.event.issue.number }}
           SENDER: ${{ github.event.sender.login }}
+          APPROVERS: ${{ vars.FACTORY_APPROVERS }}
         run: |
+          if [ -z "$APPROVERS" ] || ! echo ",$APPROVERS," | grep -qi ",$SENDER,"; then
+            gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:rework
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Rework ignored: @$SENDER is not on the approver list. Label removed."
+            exit 0
+          fi
           last=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --jq "[.[] | select(.user.login==\"$SENDER\")] | last | .html_url // \"\"")
           .github/scripts/factory-flow.sh rework "$ISSUE" "Rework requested by @$SENDER. See the latest comment: $last"

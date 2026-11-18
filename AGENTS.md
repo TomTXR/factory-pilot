@@ -33,6 +33,7 @@ Run from the repo root.
 | `npm run up` | Builds and starts the stack on http://localhost:8080 |
 | `npm run e2e` | Playwright against `BASE_URL` (default http://localhost:8080) |
 | `npm run down` | Stops the stack and deletes its data |
+| `bash tests/factory-flow.test.sh` | Tests the factory state transitions (`.github/scripts/factory-flow.sh`) with a stubbed `gh` |
 
 All of `lint`, `typecheck`, `test` and `e2e` must pass before a PR is ready. CI runs the same commands.
 
