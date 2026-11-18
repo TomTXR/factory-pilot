@@ -67,6 +67,7 @@ jobs:
           echo "number=$pr" >> "$GITHUB_OUTPUT"
 
       - name: Bring the PR up to date and wait for required checks
+        id: ready
         env:
           PR: ${{ steps.pr.outputs.number }}
         run: |
@@ -76,7 +77,20 @@ jobs:
             state=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json mergeStateStatus --jq .mergeStateStatus)
             case "$state" in
               CLEAN|HAS_HOOKS|UNSTABLE) echo "mergeable: $state"; exit 0 ;;
-              DIRTY|BLOCKED_BY_FAILURE) break ;;
+              DIRTY)
+                # Conflict with main (e.g. another story was merged first). Only the
+                # builder's own PR (factory/issue-<n>) can be revised by the builder;
+                # any other branch blocks for a human as before.
+                head=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefName --jq .headRefName)
+                [ "$head" = "factory/issue-$ISSUE" ] || break
+                .github/scripts/factory-flow.sh rework "$ISSUE" "$(printf 'The release of PR #%s was stopped: it conflicts with the current `main` (another change was merged first). Merge the current `main` into this branch, resolve the conflicts so that both the existing features on `main` and this story work, run all checks, and push.' "$PR")"
+                echo "conflict=true" >> "$GITHUB_OUTPUT"
+                # The script may have blocked the story (rework limit); its message is then final.
+                if gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json labels --jq '[.labels[].name] | index("factory:rework")' | grep -qv null; then
+                  gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "The approved release could not be merged: PR #$PR conflicts with the current \`main\`. The builder resolves the conflict now. Because the code changes, you will get a new test request and need to approve again."
+                fi
+                exit 0 ;;
+              BLOCKED_BY_FAILURE) break ;;
             esac
             if gh pr checks "$PR" --repo "$GITHUB_REPOSITORY" --required 2>/dev/null | awk '{print $2}' | grep -q fail; then break; fi
             sleep 15
@@ -88,10 +102,19 @@ jobs:
 
       - name: Merge
         id: merge
+        if: steps.ready.outputs.conflict != 'true'
         env:
           PR: ${{ steps.pr.outputs.number }}
         run: |
-          gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --rebase --delete-branch
+          # Squash: works for any mergeable PR, also when the builder resolved a conflict
+          # with a merge commit (rebase fails then: "This branch can't be rebased"),
+          # and keeps the linear history that branch protection requires.
+          if ! gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --squash --delete-branch; then
+            gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:approved-for-production --add-label factory:blocked
+            .github/scripts/board-status.sh "$NODE" Blocked
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "The approved release of PR #$PR could not be merged (see the Land run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). Nothing was deployed. Reply \`/retry\` after the cause is fixed."
+            exit 1
+          fi
           sha=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json mergeCommit --jq .mergeCommit.oid)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:approved-for-production --add-label factory:deploying
@@ -102,6 +125,7 @@ jobs:
   # so deploy and cleanup run here as reusable workflow calls.
   deploy:
     needs: land
+    if: needs.land.outputs.sha != ''
     uses: ./.github/workflows/deploy-target.yml
     with:
       kind: prod
@@ -110,6 +134,7 @@ jobs:
 
   cleanup:
     needs: land
+    if: needs.land.outputs.sha != ''
     uses: ./.github/workflows/preview-cleanup.yml
     with:
       pr: ${{ needs.land.outputs.pr }}
