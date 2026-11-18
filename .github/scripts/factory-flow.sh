@@ -185,6 +185,12 @@ case "$cmd" in
   start)
     issue="$1"
     [ "$(current_state "$issue")" = inbox ] || { echo "issue #$issue already in progress"; exit 0; }
+    # Public repo: only stories by approvers start on their own. Others wait in the
+    # inbox until an approver comments /approve (the command path sets FACTORY_START_APPROVED).
+    opener=$(gh api "repos/$R/issues/$issue" | jq -r .user.login)
+    if [ "${FACTORY_START_APPROVED:-}" != 1 ] && ! is_approver "$opener"; then
+      echo "issue #$issue by $opener waits for an approver"; exit 0
+    fi
     set_state "$issue" factory:breakdown; board "$issue" Breakdown
     gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:started -->\n**Breakdown started.** The breakdown agent writes a plan with acceptance criteria and questions within about 5 minutes. You will be notified when it is ready.')" >/dev/null
     echo "issue #$issue -> breakdown"
@@ -220,7 +226,7 @@ case "$cmd" in
     read_as=""; [ "$explicit" = no ] && read_as="Read as: **$intent** - $summary"$'\n\n'
     case "$state:$intent" in
       inbox:approve|inbox:changes)
-        "$0" start "$issue" >/dev/null
+        FACTORY_START_APPROVED=1 "$0" start "$issue" >/dev/null
         ack "$issue" "$cid" "Breakdown started by @$author." ;;
       plan-review:approve)
         set_state "$issue" factory:plan-approved; board "$issue" "In Progress"

@@ -204,10 +204,16 @@ cmd factory:plan-review alice "what does point 3 mean?" unclear
 check "C11 unclear at plan review: no state change" no "issue edit"
 check "C11 unclear: explains the commands" yes "No action taken"
 
-setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", labels:[{name:"factory:story"}]}' > "$FX/issue.json"
+setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", user:{login:"alice"}, labels:[{name:"factory:story"}]}' > "$FX/issue.json"
 "$SCRIPT" start 5 >/dev/null
-check "S1 new story starts breakdown" yes "add-label factory:breakdown"
-jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue.json"; : > "$GH_LOG"
+check "S1 new story by approver starts breakdown" yes "add-label factory:breakdown"
+jq -n '{node_id:"I_test", user:{login:"mallory"}, labels:[{name:"factory:story"}]}' > "$FX/issue.json"; : > "$GH_LOG"
+"$SCRIPT" start 5 >/dev/null
+check "S3 story by a stranger does not start" no "issue edit"
+cmd "" alice "/approve"; jq -n '{node_id:"I_test", user:{login:"mallory"}, labels:[{name:"factory:story"}]}' > "$FX/issue.json"
+: > "$GH_LOG"; GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "S4 approver /approve starts a stranger's story" yes "add-label factory:breakdown"
+jq -n '{node_id:"I_test", user:{login:"alice"}, labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue.json"; : > "$GH_LOG"
 "$SCRIPT" start 5 >/dev/null
 check "S2 start does not reset a story in progress" no "issue edit"
 
