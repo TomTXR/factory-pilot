@@ -19,6 +19,12 @@
 # script sets that status; it never restarts the builder while a PR is open.
 #   factory-flow.sh ready-check <pr>         preview deployed: ready for human?
 #   factory-flow.sh plan-ready <issue>       breakdown posted a plan: notify approvers
+#   factory-flow.sh start <issue>            new story: start the breakdown
+#   factory-flow.sh command <issue> <id>     a comment by a human on a story issue
+#
+# Humans steer only with comments: /approve, /changes <text>, /retry, or plain
+# text whose intent classify-intent.sh infers at the two gates. Production
+# releases always need an explicit /approve. Labels are factory-managed state.
 # Env: GH_TOKEN, GITHUB_REPOSITORY, FACTORY_AGENT_LOGINS (comma list),
 #      optional FACTORY_BOT_LOGIN, PROJECT_TOKEN, PROJECT_LOGIN, PROJECT_NUMBER,
 #      PREVIEW_HEALTH_CMD (tests only)
@@ -54,6 +60,23 @@ review_status() { # sha state description
 open_factory_prs() { # issue -> PR numbers on factory/issue-<n> (builder's branch)
   gh api "repos/$R/pulls?state=open&per_page=100" | jq -r --arg ref "factory/issue-$1" '.[] | select(.head.ref == $ref) | .number'
 }
+current_state() { # issue -> one factory state (without factory: prefix), or inbox
+  local labels; labels=$(gh api "repos/$R/issues/$1" | jq -r '[.labels[].name] | join(" ")')
+  for st in blocked approved-for-production deploying human-review agent-review rework plan-approved in-progress plan-review breakdown done; do
+    case " $labels " in *" factory:$st "*) echo "$st"; return;; esac
+  done
+  echo inbox
+}
+plan_questions() { # issue -> "Open questions" section of the latest agent plan
+  gh api "repos/$R/issues/$1/comments" --paginate | jq -rs --arg agents ",$AGENTS," \
+    '[.[][] | (.user.login | ascii_downcase) as $u | select(($agents | ascii_downcase | contains("," + $u + ",")) and (.body | startswith("<!-- factory:breakdown -->")))] | last | .body // ""' \
+    | sed -n '/^## Open questions/,$p'
+}
+ack() { # issue comment-id text: one bot reply per human comment
+  gh issue comment "$1" --repo "$R" --body "$(printf '<!-- factory:ack %s -->\n%s' "$2" "$3")" >/dev/null
+}
+is_approver() { echo ",${FACTORY_APPROVERS:-}," | grep -qi ",$1,"; }
+emit() { [ -n "${GITHUB_OUTPUT:-}" ] && echo "$1" >> "$GITHUB_OUTPUT"; echo "output: $1"; }
 verdict_of() { printf '%s' "$1" | grep -oE '(✅ APPROVED|🔄 CHANGES REQUESTED|⏸ INCONCLUSIVE)' | tail -1 || true; }
 preview_healthy() {
   if [ -n "${PREVIEW_HEALTH_CMD:-}" ]; then $PREVIEW_HEALTH_CMD "$1"; return; fi
@@ -137,7 +160,7 @@ case "$cmd" in
     marker="<!-- factory:test-request $head -->"
     if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "test request already posted"; exit 0; fi
     set_state "$issue" factory:human-review; board "$issue" "Human Review"
-    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n## Test request\n\nThe change for this story is ready for your review.\n\n- **Test version:** https://%s\n- **Pull request:** #%s (commit %s), CI green, reviewer agent approved\n\nPlease check the acceptance criteria of this issue on the test version (also on your phone). Then set one label:\n\n- `factory:approved-for-production` to merge and deploy, or\n- `factory:rework` and add a comment with what must change.' "$marker" "$host" "$pr" "${head:0:7}")" >/dev/null
+    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n## Test request\n\nThe change for this story is ready for your review.\n\n- **Test version:** https://%s\n- **Pull request:** #%s (commit %s), CI green, reviewer agent approved\n\nPlease check the acceptance criteria of this issue on the test version (also on your phone). Then reply with a comment:\n\n- describe what must change (or `/changes <what>`): the builder revises the pull request, or\n- `/approve` to merge and deploy to production. A release always needs the explicit `/approve`.' "$marker" "$host" "$pr" "${head:0:7}")" >/dev/null
     echo "issue #$issue -> human review"
     ;;
 
@@ -155,9 +178,88 @@ case "$cmd" in
       # Without approvers the notification would reach nobody; fail before writing the marker.
       echo "::error::FACTORY_APPROVERS is empty; cannot notify approvers" >&2; exit 1
     fi
-    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Plan ready for your review** %s\n\nPlease read the plan above and answer open questions in a comment. Then set one label:\n\n- `factory:plan-approved` to start building, or\n- `factory:breakdown` again for a refined plan that includes your answers.' "$marker" "$mentions")" >/dev/null
+    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Plan ready for your review** %s\n\nPlease read the plan above. Reply with a comment:\n\n- answer the open questions and/or describe changes: the agent writes a refined plan, or\n- `/approve` (or write that the plan is fine) to start building.' "$marker" "$mentions")" >/dev/null
     echo "issue #$issue: approvers notified (plan comment $plan_id)"
     ;;
 
-  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready ..." >&2; exit 2 ;;
+  start)
+    issue="$1"
+    [ "$(current_state "$issue")" = inbox ] || { echo "issue #$issue already in progress"; exit 0; }
+    set_state "$issue" factory:breakdown; board "$issue" Breakdown
+    gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:started -->\n**Breakdown started.** The breakdown agent writes a plan with acceptance criteria and questions within about 5 minutes. You will be notified when it is ready.')" >/dev/null
+    echo "issue #$issue -> breakdown"
+    ;;
+
+  command)
+    issue="$1"; cid="$2"
+    c=$(gh api "repos/$R/issues/comments/$cid")
+    author=$(echo "$c" | jq -r .user.login); body=$(echo "$c" | jq -r .body); curl_url=$(echo "$c" | jq -r .html_url)
+    if ! is_approver "$author" || [ "$(echo "$c" | jq -r .user.type)" != "User" ]; then echo "ignored: $author is not an approver"; exit 0; fi
+    if bot_comments "$issue" | jq -e --arg m "<!-- factory:ack $cid -->" 'any(.[]; contains($m))' >/dev/null; then echo "already handled"; exit 0; fi
+    state=$(current_state "$issue")
+    cmd_line=$(printf '%s\n' "$body" | grep -ioE '^[[:space:]]*/(approve|changes|retry|start)\b' | head -1 | tr -d '[:space:]' | tr 'A-Z' 'a-z' || true)
+    explicit=yes; intent=""; summary=""
+    case "$cmd_line" in
+      /approve|/start) intent=approve ;;
+      /changes) intent=changes ;;
+      /retry) intent=retry ;;
+      *) explicit=no ;;
+    esac
+    echo "comment $cid by $author in state $state: command=${cmd_line:-none}"
+    if [ "$explicit" = no ]; then
+      case "$state" in
+        plan-review|human-review)
+          tmp=$(mktemp); ctx=$(mktemp); printf '%s' "$body" > "$tmp"
+          [ "$state" = plan-review ] && plan_questions "$issue" > "$ctx"
+          res=$("$here/classify-intent.sh" "$state" "$tmp" "$ctx"); rm -f "$tmp" "$ctx"
+          intent=$(echo "$res" | jq -r .intent); summary=$(echo "$res" | jq -r .summary)
+          echo "inferred: $intent ($summary)" ;;
+        *) echo "plain comment outside a gate: no action"; exit 0 ;;
+      esac
+    fi
+    read_as=""; [ "$explicit" = no ] && read_as="Read as: **$intent** - $summary"$'\n\n'
+    case "$state:$intent" in
+      inbox:approve|inbox:changes)
+        "$0" start "$issue" >/dev/null
+        ack "$issue" "$cid" "Breakdown started by @$author." ;;
+      plan-review:approve)
+        set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
+        ack "$issue" "$cid" "${read_as}**Plan approved** by @$author. The builder starts within about 5 minutes." ;;
+      plan-review:changes)
+        set_state "$issue" factory:breakdown; board "$issue" Breakdown
+        ack "$issue" "$cid" "${read_as}**Plan changes requested** by @$author. The breakdown agent writes a refined plan that includes your comment, within about 5 minutes." ;;
+      human-review:approve)
+        if [ "$explicit" = yes ]; then
+          set_state "$issue" factory:approved-for-production; board "$issue" Deploying
+          ack "$issue" "$cid" "**Release approved** by @$author. Merging and deploying to production; this issue moves to Done after the smoke check."
+          emit land=true
+        else
+          ack "$issue" "$cid" "${read_as}A release to production needs an explicit decision. Reply \`/approve\` to merge and deploy, or \`/changes <what>\` to request changes."
+        fi ;;
+      human-review:changes)
+        ack "$issue" "$cid" "${read_as}**Changes requested** by @$author. The builder revises the pull request."
+        "$0" rework "$issue" "$(printf 'Changes requested by @%s (%s):\n\n> %s' "$author" "$curl_url" "$(printf '%s' "$body" | sed 's/^/> /' | tail -c 3000)")" ;;
+      blocked:retry)
+        prs=$(open_factory_prs "$issue")
+        if [ -n "$prs" ]; then
+          for pr in $prs; do review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" failure "Retry requested by $author"; done
+          set_state "$issue" factory:rework; board "$issue" Rework
+          ack "$issue" "$cid" "**Retry** by @$author. The builder revises PR $(echo $prs | tr ' ' ',') and reads this thread."
+        elif [ "$(gh api "repos/$R/issues/$issue/comments" --paginate | jq -s --arg agents ",$AGENTS," '[.[][] | (.user.login | ascii_downcase) as $u | select(($agents | ascii_downcase | contains("," + $u + ",")) and (.body | startswith("<!-- factory:breakdown -->")))] | length')" -gt 0 ]; then
+          set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
+          ack "$issue" "$cid" "**Retry** by @$author. The builder starts again from the approved plan."
+        else
+          set_state "$issue" factory:breakdown; board "$issue" Breakdown
+          ack "$issue" "$cid" "**Retry** by @$author. The breakdown agent starts again."
+        fi ;;
+      plan-review:unclear|human-review:unclear)
+        ack "$issue" "$cid" "${read_as}No action taken. Reply \`/approve\` to proceed or \`/changes <what>\` to request changes." ;;
+      *)
+        if [ "$explicit" = yes ]; then
+          ack "$issue" "$cid" "\`$cmd_line\` has no effect in the current state (**$state**). Commands apply at Plan Review and Human Review; \`/retry\` applies when a story is blocked."
+        fi ;;
+    esac
+    ;;
+
+  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command ..." >&2; exit 2 ;;
 esac
