@@ -27,6 +27,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - name: Board script tests
+        run: bash tests/board-status.test.sh
       - name: Factory flow script tests
         run: bash tests/factory-flow.test.sh && bash tests/pilot-deploy-env.test.sh
 

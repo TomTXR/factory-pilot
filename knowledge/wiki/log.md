@@ -84,3 +84,6 @@ Append-only. Newest entries at the bottom.
 
 ## [2026-11-19] ingest | Factory Spike Lessons
 - Raw: raw/lessons/2026-11-19-story-as-test-bench.md
+
+## [2026-11-19] ingest | Factory Spike Lessons
+- Raw: raw/lessons/2026-11-19-board-add-race.md

@@ -40,8 +40,14 @@ fid=$(echo "$p" | jq -r .data.user.projectV2.field.id)
 label=$(display_name "$status")
 oid=$(echo "$p" | jq -r --arg a "$label" --arg b "$status" '[.data.user.projectV2.field.options[] | select(.name==$a)] + [.data.user.projectV2.field.options[] | select(.name==$b)] | first | .id // empty')
 [ -n "$oid" ] || { echo "::error::Status '$label' ($status) not found on the board"; exit 1; }
-item=$(gql 'mutation($p:ID!,$c:ID!){ addProjectV2ItemById(input:{projectId:$p, contentId:$c}){ item { id } } }' \
-  "$(jq -n --arg p "$pid" --arg c "$node" '{p:$p, c:$c}')" | jq -r .data.addProjectV2ItemById.item.id)
+add_item() {
+  gql 'mutation($p:ID!,$c:ID!){ addProjectV2ItemById(input:{projectId:$p, contentId:$c}){ item { id } } }' \
+    "$(jq -n --arg p "$pid" --arg c "$node" '{p:$p, c:$c}')" | jq -r .data.addProjectV2ItemById.item.id
+}
+# Adding is idempotent, except while the board's own auto-add workflow adds the same new
+# issue: then GitHub answers "Content already exists in this project" (#61 kept no status).
+# A second call returns the existing item.
+item=$(add_item) || { sleep "${BOARD_RETRY_WAIT:-3}"; item=$(add_item); }
 gql 'mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p, itemId:$i, fieldId:$f, value:{singleSelectOptionId:$o}}){ projectV2Item { id } } }' \
   "$(jq -n --arg p "$pid" --arg i "$item" --arg f "$fid" --arg o "$oid" '{p:$p, i:$i, f:$f, o:$o}')" > /dev/null
 echo "board: set to $label"

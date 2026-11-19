@@ -66,6 +66,7 @@ Running real stories through the factory showed where the first design broke. Ea
 - jq's `//` treats `false` as missing: `.mergeable // empty` never reports a conflict.
 - `gh pr comment --edit-last` edits the newest comment of the account, not a specific one. All factory comments share one account, so it overwrote a rework request and reset the rework count (PR #45). Update comments only by their own marker ([source](../../raw/process/2026-11-19-preview-comment-edit-last.md)).
 - GitHub runs no `pull_request` workflows on a PR with a merge conflict, and `mergeable` is `null` until computed. Conflicts must be checked on `push` (main and factory branches), polling until GitHub reports true or false.
+- `addProjectV2ItemById` is idempotent, but fails with "Content already exists" while the board's auto-add workflow adds the same new issue. A new split part kept no status (#61). Retry the add once ([source](../../raw/lessons/2026-11-19-board-add-race.md)).
 
 ## See Also
 
