@@ -991,5 +991,18 @@ check "BG6 a rework without changes on a pending release says only the release i
 grep -q 'send_back; reason="required checks failed"' "$ROOT/.github/workflows/land.yml" \
   && { pass=$((pass+1)); echo "ok   BG7 failing checks at release go to the builder"; } || { fail=$((fail+1)); echo "FAIL BG7 send_back"; }
 
+
+# BG8. Reviewer's P0 sequence: change request after a blocked release, then an agent block, then "go on" -> never release.
+relfx factory:blocked "release-blocked 16 sha1" "the delete button must be red first"
+FACTORY_APPROVERS=alice CLASSIFY_INTENT=changes GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "BG8 a change request withdraws the release approval" yes "^  \| <!-- factory:mark release-cleared 16 sha1 -->$"
+jq -n '[{user:{login:"agentbot"}, body:"Question: which red?", html_url:"https://x/c9"}]' > "$FX/comments.json"
+: > "$GH_LOG"; FACTORY_APPROVERS=alice "$SCRIPT" agent-blocked 5 >/dev/null 2>&1
+check "BG8 the agent block no longer claims only the release is missing" no "Only the release of the approved commit is missing"
+jq -n '{user:{login:"alice", type:"User"}, body:"go on", html_url:"https://x/c"}' > "$FX/comment.json"
+: > "$GH_LOG"; FACTORY_APPROVERS=alice CLASSIFY_INTENT=approve GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 901 >/dev/null 2>&1
+check "BG8 go-on after a change request never releases the rejected commit" no "add-label factory:approved-for-production"
+check "BG8 go-on continues with the agents instead" yes "add-label factory:rework"
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

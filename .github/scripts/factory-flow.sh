@@ -138,6 +138,19 @@ blockers() { # issue -> JSON array of the issues it is blocked by (number, state
   gh api "repos/$R/issues/$1/dependencies/blocked_by?per_page=100" | jq -c '[.[] | {number, state, state_reason}]'
 }
 open_blockers() { blockers "$1" | jq -r '.[] | select(.state == "open") | .number'; }
+release_pending() { # issue pr head -> true if a blocked release of exactly this head may be retried
+  # The latest mark for this PR head decides: release-blocked (retry allowed) or
+  # release-cleared (a change was requested since; the approval no longer stands).
+  gh api "repos/$R/issues/$1" | jq -r '.body // ""' | grep -oE "<!-- factory:mark release-(blocked|cleared) $2 $3 -->" | tail -1 | grep -q "release-blocked"
+}
+clear_release() { # issue: any change request withdraws the approval of the open PR's current head
+  local pr head
+  for pr in $(open_factory_prs "$1"); do
+    head=$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)
+    release_pending "$1" "$pr" "$head" && status "$1" "A change was requested: the earlier release approval of ${head:0:7} no longer applies." "release-cleared $pr $head"
+  done
+  return 0
+}
 state_before_block() { # issue -> the factory state the story was in when factory:blocked was last added
   gh api "repos/$R/issues/$1/events?per_page=100" --paginate | jq -rs '
     [.[][] | select(.event == "labeled" and (.label.name | startswith("factory:")))] as $ev
@@ -295,6 +308,7 @@ case "$cmd" in
 
   rework)
     issue="$1"; reason="$2"
+    clear_release "$issue"
     # Older runs marked a rework on both the issue and the PR; newer ones only on the PR.
     # The larger of the two counts is the number of reworks.
     n_issue=$(bot_comments "$issue" | jq '[.[] | select(contains("<!-- factory:rework -->"))] | length'); n_pr=0
@@ -384,7 +398,7 @@ case "$cmd" in
       '[.[][] | (.user.login | ascii_downcase) as $u | select($agents | ascii_downcase | contains("," + $u + ","))] | last | .html_url // ""')
     status "$issue" "Blocked: an agent stopped and explained why${url:+ ($url)}."
     pr=$(open_factory_prs "$issue" | head -1)
-    if [ -n "$pr" ] && has_mark "$issue" "release-blocked $pr $(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)"; then
+    if [ -n "$pr" ] && release_pending "$issue" "$pr" "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)"; then
       notify "$issue" "**Blocked:** an agent found nothing to change${url:+ ($url)}. Only the release of the approved commit is missing: reply \"go on\" to release it."
       echo "issue #$issue -> blocked by an agent, release pending"; exit 0
     fi
@@ -615,7 +629,8 @@ case "$cmd" in
         # does not need to know the reason; the factory does. Agents read this thread.
         prs=$(open_factory_prs "$issue"); pr=$(echo "$prs" | head -1)
         head=""; [ -n "$pr" ] && head=$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)
-        if [ "$intent" != changes ] && [ -n "$pr" ] && has_mark "$issue" "release-blocked $pr $head"; then
+        [ "$intent" = changes ] && clear_release "$issue"
+        if [ "$intent" != changes ] && [ -n "$pr" ] && release_pending "$issue" "$pr" "$head"; then
           # The release stopped. The human approved exactly this commit for production
           # before (explicit /approve at Human Review), so this is not a new release decision.
           set_state "$issue" factory:approved-for-production; board "$issue" Deploying

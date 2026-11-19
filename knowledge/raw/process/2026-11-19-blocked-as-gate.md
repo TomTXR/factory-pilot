@@ -16,6 +16,7 @@ First proposal (dropped): better hint texts per block reason. The product owner 
 
 Decision (2026-11-19, product owner): Blocked is a gate like Plan Review and Human Review. The intent classifier reads the comment (blocked mode: continuing as is, "go on", "retry", "approve", counts as approve). The factory acts by the block reason it recorded:
 - blocked release (mark `release-blocked <pr> <head>` matches the PR head): release the same commit again. This is not a new release decision: the human approved exactly this commit with an explicit `/approve` at Human Review. A new commit always needs a new test request and an explicit `/approve`.
+- Any change request after that (by the human, the reviewer agent, failing CI or a conflict) withdraws the approval: the factory records `release-cleared <pr> <head>`, and the latest mark for the head decides. Found by the reviewer agent (P0 on PR #53): without it, "go on" after a change request and a stalled builder would have released the commit the human had asked to change.
 - planning stalled: plan again (never build an unapproved plan).
 - anything else (stall, agent stop, rework limit, no verdict): the agents continue and read the thread.
 - a change request: the agents revise with it, whatever the reason; it never releases.
