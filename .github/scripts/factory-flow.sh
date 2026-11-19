@@ -306,8 +306,9 @@ case "$cmd" in
       *:cancel)
         if [ "$explicit" = yes ]; then
           ack "$issue" "$cid" "**Story cancelled** by @$author. Open pull requests are closed and previews removed."
-          "$0" closed "$issue" not_planned
+          # Close first: closed -> child-closed must see this issue as closed.
           gh issue close "$issue" --repo "$R" --reason "not planned" >/dev/null
+          "$0" closed "$issue" not_planned
         else
           ack "$issue" "$cid" "${read_as}Cancelling a story needs an explicit decision. Reply \`/cancel\` to close it as not planned, or \`/changes <what>\` to change it."
         fi ;;
@@ -399,12 +400,12 @@ case "$cmd" in
     if [ -z "$open" ]; then
       if gh api "repos/$R/issues/$parent/sub_issues?per_page=100" | jq -e 'any(.[]; .state_reason == "completed")' >/dev/null; then
         gh issue comment "$parent" --repo "$R" --body "All parts of this story are closed. Closing it as completed." >/dev/null
-        "$0" closed "$parent" completed
         gh issue close "$parent" --repo "$R" --reason completed >/dev/null
+        "$0" closed "$parent" completed
       else
         gh issue comment "$parent" --repo "$R" --body "All parts of this story were cancelled. Closing it as not planned." >/dev/null
-        "$0" closed "$parent" not_planned
         gh issue close "$parent" --repo "$R" --reason "not planned" >/dev/null
+        "$0" closed "$parent" not_planned
       fi
       echo "parent #$parent closed (all parts closed)"; exit 0
     fi

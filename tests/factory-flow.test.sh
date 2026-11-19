@@ -13,7 +13,7 @@ echo "$*" >> "$GH_LOG"
 if [ "$1" = "api" ]; then
   path=""; for a in "$@"; do case "$a" in repos/*) path="$a"; break ;; esac; done
   case "$path" in
-    */sub_issues*) case "$*" in *"-X POST"*) echo '{}' ;; *) cat "$FX/sub_issues.json" 2>/dev/null || echo '[]' ;; esac ;;
+    */sub_issues*) case "$*" in *"-X POST"*) echo '{}' ;; *) pn=${path%/sub_issues*}; pn=${pn##*/}; cat "$FX/sub_issues-$pn.json" 2>/dev/null || cat "$FX/sub_issues.json" 2>/dev/null || echo '[]' ;; esac ;;
     */issues) n=$(( $(cat "$FX/next" 2>/dev/null || echo 100) )); echo $((n+1)) > "$FX/next"; echo "{\"number\":$n,\"id\":$((n*1000))}" ;;
     */pulls/*/reviews/*) cat "$FX/review.json" ;;
     */pulls/*/reviews) cat "$FX/reviews.json" ;;
@@ -24,6 +24,14 @@ if [ "$1" = "api" ]; then
     */issues/*) if [ -f "$FX/issue-${path##*/}.json" ]; then cat "$FX/issue-${path##*/}.json"; elif [ -f "$FX/issue.json" ]; then cat "$FX/issue.json"; else echo '{"node_id":"I_test","labels":[]}'; fi ;;
     *) echo '{}' ;;
   esac
+fi
+if [ "$1" = "issue" ] && [ "$2" = "close" ]; then
+  # Stateful close: later reads see the issue as closed (as on GitHub).
+  n="$3"; r=completed; case "$*" in *"not planned"*) r=not_planned ;; esac
+  f="$FX/issue-$n.json"; [ -f "$f" ] && jq --arg r "$r" '.state = "closed" | .state_reason = $r' "$f" > "$f.t" && mv "$f.t" "$f"
+  for sf in "$FX"/sub_issues*.json; do
+    [ -f "$sf" ] && jq --argjson n "$n" --arg r "$r" 'map(if .number == $n then .state = "closed" | .state_reason = $r else . end)' "$sf" > "$FX/s.t" && mv "$FX/s.t" "$sf"
+  done
 fi
 exit 0
 STUB
@@ -37,7 +45,7 @@ setup() { # head_ref review_author review_body
   : > "$GH_LOG"
   jq -n --arg ref "$1" '{state:"open", head:{ref:$ref, sha:"sha1"}}' > "$FX/pull.json"
   jq -n --arg u "$2" --arg b "$3" '{user:{login:$u}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"
-  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX/sub_issues.json" "$FX/next" "$WORK/out"
+  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/next" "$WORK/out"
   jq -n '[{number:16, head:{ref:"factory/issue-5"}}, {number:17, head:{ref:"factory/issue-50"}}]' > "$FX/open_pulls.json"
 }
 check() { # name expected(yes|no) pattern
@@ -348,6 +356,27 @@ jq -n '[{number:100, state:"closed", state_reason:"completed"}, {number:101, sta
 "$SCRIPT" closed 5 not_planned >/dev/null
 check "P7 cancelled parent cancels its open parts" yes "issue close 101 --repo owner/repo --reason not planned"
 check "P7 closed parts stay closed" no "issue close 100"
+
+
+# P8. /cancel on the last open part closes the parent (close happens before child-closed).
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_p", state:"open", user:{login:"github-actions[bot]", type:"Bot"}, body:"<!-- factory:child-of 40 -->\n_Part_", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-41.json"
+jq -n '{node_id:"I_40", state:"open", labels:[{name:"factory:story"},{name:"factory:split"}]}' > "$FX/issue-40.json"
+jq -n '[{number:41, state:"open"}]' > "$FX/sub_issues.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/cancel", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 41 900 >/dev/null 2>&1
+check "P8 /cancel on the last part closes the parent" yes "issue close 40 --repo owner/repo --reason not planned"
+
+# P9. Nested split: the last sub-part closes its parent part, which starts the grandparent's next part.
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_a", state:"closed", state_reason:"completed", user:{login:"github-actions[bot]"}, body:"<!-- factory:child-of 61 -->\n_Part_", labels:[{name:"factory:story"}]}' > "$FX/issue-70.json"
+jq -n '{node_id:"I_61", state:"open", user:{login:"github-actions[bot]"}, body:"<!-- factory:child-of 60 -->\n_Part_", labels:[{name:"factory:story"},{name:"factory:split"}]}' > "$FX/issue-61.json"
+jq -n '{node_id:"I_60", state:"open", labels:[{name:"factory:story"},{name:"factory:split"}]}' > "$FX/issue-60.json"
+jq -n '{node_id:"I_62", user:{login:"github-actions[bot]"}, labels:[{name:"factory:story"}]}' > "$FX/issue-62.json"
+jq -n '[{number:70, state:"closed", state_reason:"completed"}]' > "$FX/sub_issues-61.json"
+jq -n '[{number:61, state:"open"}, {number:62, state:"open"}]' > "$FX/sub_issues-60.json"
+"$SCRIPT" child-closed 70 >/dev/null 2>&1
+check "P9 nested: grandparent's next part starts" yes "issue edit 62 .*--add-label factory:breakdown"
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
