@@ -1,7 +1,7 @@
 # Factory Self-Hosting
 
 > Sources: Product owner question in the factory spike session, 2026-11-19
-> Raw: [Idea: the factory develops itself](../../raw/process/2026-11-19-factory-self-hosting-idea.md)
+> Raw: [Idea: the factory develops itself](../../raw/process/2026-11-19-factory-self-hosting-idea.md); [Idea: a software factory hub](../../raw/process/2026-11-19-software-factory-hub-idea.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -24,9 +24,13 @@ Status: **idea, not decided, not planned.** The software factory could develop i
 | No preview for factory changes | Test step is a run against a separate test repository |
 | Stalls are noticed by humans, not the factory | A watchdog detects stuck stories and opens a ticket |
 
+## Software factory hub
+
+The factory is a product of its own, outside DomiGO. Its knowledge should have one entry point (idea, eventually). Today it sits in three places: this pilot wiki, the DomiGO docs (`docs/engineering/software-factory/`: concept and decisions, spike log, lifecycle recipe), and the factory VM (automation bundles, configuration, only partly written down). The separate factory repository would host the hub as its wiki; DomiGO would link to it and keep only its app knowledge.
+
 ## Suggested order
 
-1. After the spike: a separate, app-agnostic factory repository; a pinned stable version serves the DomiGO repository.
+1. After the spike: a separate, app-agnostic factory repository with the software factory hub as its wiki; a pinned stable version serves the DomiGO repository.
 2. First self-hosted story: the watchdog for stuck stories.
 
 ## See Also
