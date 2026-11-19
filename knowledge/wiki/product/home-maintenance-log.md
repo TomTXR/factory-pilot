@@ -42,7 +42,7 @@ Source: [Story 34 Google sign-in](../../raw/stories/2026-11-19-story-34-google-s
 ## Requirements
 
 - Overview per property: what was maintained when, and what it cost.
-- Totals per year and per value category ([GO categories](../domain/go-categories.md)).
+- Totals per year and per value category ([GO categories](go-categories.md)).
 - Mobile first: entries are logged on site on a phone ([owner persona](../users/home-owner.md)).
 - Amounts in EUR, dates in day-month-year order (NL / DE users).
 
@@ -52,6 +52,6 @@ Login methods other than Google, reminders, document uploads, sharing with tenan
 
 ## See Also
 
-- [GO value categories](../domain/go-categories.md)
+- [GO value categories](go-categories.md)
 - [Home owner persona](../users/home-owner.md)
 - [Story workflow](../process/story-workflow.md)

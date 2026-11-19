@@ -1,7 +1,7 @@
 # Story Workflow
 
 > Sources: Product owner decisions in the factory spike, 2026-11-19
-> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Comments on human tasks](../../raw/process/2026-11-19-human-task-comments.md); [Failed CI sends a PR back](../../raw/process/2026-11-19-ci-failure-rework.md); [Release branch update](../../raw/process/2026-11-19-release-branch-update.md); [Silent stalls and the watchdog](../../raw/process/2026-11-19-silent-stalls-watchdog.md); [Blocked as a gate](../../raw/process/2026-11-19-blocked-as-gate.md)
+> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Comments on human tasks](../../raw/process/2026-11-19-human-task-comments.md); [Failed CI sends a PR back](../../raw/process/2026-11-19-ci-failure-rework.md); [Release branch update](../../raw/process/2026-11-19-release-branch-update.md); [Silent stalls and the watchdog](../../raw/process/2026-11-19-silent-stalls-watchdog.md); [Blocked as a gate](../../raw/process/2026-11-19-blocked-as-gate.md); [Project knowledge duty](../../raw/process/2026-11-19-project-knowledge-duty.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -18,7 +18,7 @@ The board columns say who acts next: columns starting with **Human:** wait for a
 | Inbox | Nobody (stories by non-approvers wait) | `/start` or `/approve` |
 | Breakdown | Breakdown agent (Opus) writes the plan | None |
 | Plan Review | Approvers | Answers or changes give a refined plan; `/approve` starts the build |
-| In Progress, Agent Review, Rework | Builder (Sonnet) and reviewer (Opus); at most 3 rework loops. A failed CI run sends the PR back to the builder with the failing tests (the reviewer does not review red PRs). After each push to main, a factory PR that conflicts goes back to the builder to merge main (GitHub runs no checks on a conflicting PR) | None |
+| In Progress, Agent Review, Rework | Builder (Sonnet) and reviewer (Opus); the PR also updates the wiki and adds the story record ([Project Knowledge](project-knowledge.md)); at most 3 rework loops. A failed CI run sends the PR back to the builder with the failing tests (the reviewer does not review red PRs). After each push to main, a factory PR that conflicts goes back to the builder to merge main (GitHub runs no checks on a conflicting PR) | None |
 | Human Review | Approvers test the preview | Changes revise the PR; only an explicit `/approve` releases, and only when all human tasks are closed |
 | Deploying, Done | Factory merges and deploys | None |
 | Blocked | Human | Free text, like the other gates: "go on" (or retry, approve) continues by the block reason: a blocked release releases the same approved commit again, a stalled step restarts; a change request goes to the agents; `/cancel` stays explicit |
@@ -110,3 +110,4 @@ Why: one person usually drives a story, and the list of approvers must exist onl
 - [Home Maintenance Log](../product/home-maintenance-log.md)
 - [Factory Spike Lessons](../lessons/factory-spike-lessons.md)
 - [Factory Self-Hosting](factory-self-hosting.md)
+- [Project Knowledge](project-knowledge.md)
