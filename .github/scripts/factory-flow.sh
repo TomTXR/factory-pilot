@@ -344,7 +344,7 @@ case "$cmd" in
     # a conflicting factory PR is sent back to the builder to merge main (once per head).
     # Usage: conflicts [pr...]  (no argument: all open factory PRs)
     prs="$*"
-    [ -n "$prs" ] || prs=$(gh api "repos/$R/pulls?state=open&per_page=100" | jq -r '.[] | select(.head.ref | test("^factory/issue-[0-9]+(-[0-9]+)?$")) | .number')
+    [ -n "$prs" ] || prs=$(gh api "repos/$R/pulls?state=open&per_page=100" | jq -r '.[] | select(.head.ref | test("^factory/issue-[0-9]+$")) | .number')
     for pr in $prs; do
       issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || continue
       st=$(current_state "$issue")
