@@ -115,6 +115,17 @@ jobs:
           out=$(mktemp); GITHUB_OUTPUT="$out" .github/scripts/factory-flow.sh closed "${{ github.event.issue.number }}" "$REASON"
           echo "prs=$(grep '^cleanup_pr=' "$out" | cut -d= -f2 | jq -Rsc 'split("\n") | map(select(length>0))')" >> "$GITHUB_OUTPUT"
 
+  closed-other:
+    # Any other closed issue (bug, infra ticket, human task) can block a story
+    # (GitHub "blocked by"): release waiting stories it blocked.
+    if: github.event_name == 'issues' && github.event.action == 'closed' && !contains(github.event.issue.labels.*.name, 'factory:story')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      - run: .github/scripts/factory-flow.sh unblock "${{ github.event.issue.number }}"
+
   closed-cleanup:
     needs: closed
     if: needs.closed.outputs.prs != '' && needs.closed.outputs.prs != '[]'

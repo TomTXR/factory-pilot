@@ -1,7 +1,7 @@
 # Story Workflow
 
 > Sources: Product owner decisions in the factory spike, 2026-11-19
-> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md)
+> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -20,6 +20,7 @@ A story moves from the human's idea through an agent plan, an agent build and re
 | Deploying, Done | Factory merges and deploys | None |
 | Blocked | Human | `/retry` |
 | Cancelled | Closed as not planned or duplicate, or `/cancel` | Reopen and `/start` |
+| Waiting | Nobody: plan approved, blocked by open issues | None; starts when blockers are done; `/start` builds anyway |
 | Split | The parts carry the work | None; closes with the parts |
 | Human Task | A human (assigned) | Do the steps, store secrets, close the task |
 
@@ -45,9 +46,17 @@ A story moves from the human's idea through an agent plan, an agent build and re
 - When a plan proposes to defer work, an approver can answer in free text, for example "Yes, please create a ticket for that". The explicit request is the approval; no further step is needed.
 - `/followup <what>` does the same explicitly, in any state, without changing the story's state.
 - The ticket writer (Opus) writes one story per request from the story, the plan and the comment, in the template sections. Undecided points become open questions; nothing is invented.
-- The factory creates the story with a link to the original story and comment, and starts its breakdown at once. Nothing is built before its plan is approved.
+- The factory creates the story with a link to the original story and comment, marks it as blocked by the original story, and starts its breakdown at once. Nothing is built before its plan is approved.
 - Only an explicit request creates a ticket: "later" or "not now" alone does not.
+
+## Dependencies
+
+- Dependencies are GitHub's native "blocked by" relations, visible on the issue and the board.
+- The factory sets them for follow-ups (blocked by the original story) and split parts (each part by the previous one; part 1 inherits the parent's blockers). Humans add more in the GitHub UI.
+- Planning runs at once. A story whose plan is approved while a blocker is open goes to Waiting.
+- When the last blocker is completed, the build starts automatically. A blocker closed without completion keeps the story waiting; the bot asks for `/start` or `/cancel`.
 
 ## See Also
 
 - [Home Maintenance Log](../product/home-maintenance-log.md)
+- [Factory Spike Lessons](../lessons/factory-spike-lessons.md)

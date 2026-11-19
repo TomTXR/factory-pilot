@@ -32,4 +32,12 @@ How work moves through the software factory.
 
 | Article | Summary | Updated |
 |---------|---------|---------|
-| [Story Workflow](process/story-workflow.md) | Stages, human commands at the two gates, cancel, story split into sub-issues, human tasks and app secrets, follow-up stories from comments | 2026-11-19 |
+| [Story Workflow](process/story-workflow.md) | Stages, human commands at the two gates, cancel, story split into sub-issues, human tasks and app secrets, follow-up stories, dependencies | 2026-11-19 |
+
+## lessons
+
+What the project learned and why its rules exist.
+
+| Article | Summary | Updated |
+|---------|---------|---------|
+| [Factory Spike Lessons](lessons/factory-spike-lessons.md) | Tweaks from running real stories through the factory: comment control, split, human tasks, secrets, follow-ups, dependencies, GitHub specifics | 2026-11-19 |
