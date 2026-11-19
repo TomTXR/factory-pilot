@@ -17,3 +17,8 @@ Decision (2026-11-19, product owner approved): a failed CI run on a factory PR i
 Bug found by the tests: jq's `//` operator treats `false` as missing, so `.mergeable // empty` never reported a conflict. The check now compares `.mergeable` directly.
 
 Why not let the reviewer agent review red heads: the template gate is deliberate (it never approves a red head), and a review of a red head would only repeat the CI result. The builder needs the failure, not a review.
+
+Addendum (same day, after the first live run): the CI rework for PR #39 worked (rework 1 of 3, failing tests in the comment, #34 in Agent: Reworking), but the comment had no conflict note although the PR conflicted. GitHub computes `mergeable` on request and first returns `null`. A second gap was larger: GitHub runs no `pull_request` workflows on a PR with a merge conflict. A conflicting factory PR gets no CI, no review and no factory step, so it can never fail CI and waits forever.
+- `pr_mergeable` now polls until GitHub reports true or false (6 tries, 3 s apart).
+- New workflow `factory-conflicts.yml` runs on every push to main (checks all open factory PRs) and to a factory branch (checks its PR). A conflicting PR of a story in a build or test state goes back to the builder through the rework path, with the instruction to merge main; once per head (marker `factory:conflict <sha>`, also set by a CI rework that named the conflict).
+- Conflicts count toward the rework limit, like every rework. In a busy repository this can use up the budget; then the story asks a human (accepted for the pilot).
