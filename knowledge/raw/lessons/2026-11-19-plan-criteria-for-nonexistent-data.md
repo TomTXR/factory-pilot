@@ -12,7 +12,7 @@ The rule collided with other parts of the same plan (the duplicate check per acc
 - Rework 3 (reviewer P1): the fix skipped colliding rows, and the next account to sign in claimed them and saw the first account's notes.
 Each fix closed one edge case and the reviewer found the next; the reviewer was right every time. The problem was the rule, not the code. A check of production on 2026-11-19 found 0 properties and 1 user: the rule protected nothing.
 
-Decision (2026-11-19, product owner): drop criterion 5. Properties without an owner stay invisible and are never claimed automatically; if such rows ever exist, a one-off human task assigns them. Sent to the builder as `/changes` on #35.
+Decision (2026-11-19, product owner): drop criterion 5. Properties without an owner stay invisible and are never claimed automatically; if such rows ever exist, a one-off human task assigns them. Sent to the builder as `/changes` on #35 at 15:16 UTC (https://github.com/TomTXR/factory-pilot/issues/35#issuecomment-7013278032); the factory started rework 1 of 3 on PR #45 at 15:17 UTC. Criterion 5 is still in the plan text of #35; the `/changes` comment overrides it.
 
 Lessons:
 1. At plan review, reject criteria for scenarios that cannot occur. If the product owner has said the data or situation does not exist, the plan lists it under Out of scope instead of building for it. Edge-case machinery for non-existing data is the most expensive kind of scope: it is hard to get right and nobody can test it with real data.
