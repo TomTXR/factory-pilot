@@ -107,8 +107,13 @@ export function createPropertyRepository(sql: Sql): PropertyRepository {
     async claimUnowned(userId) {
       // Rows whose identity the account already has stay unowned: claiming them would break the per-account
       // unique index and abort the sign-in. No row is deleted.
+      // Only the first call ever claims (property_claim holds one row); the insert and the update are one statement.
       const rows = await sql`
+        with first_claim as (
+          insert into property_claim (claimed_by) values (${userId}) on conflict do nothing returning claimed_by
+        )
         update properties p set account_user_id = ${userId}
+        from first_claim
         where p.account_user_id is null and not exists (
           select 1 from properties o where o.account_user_id = ${userId} and
             (lower(regexp_replace(btrim(o.street), '\s+', ' ', 'g')),

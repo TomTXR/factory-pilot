@@ -42,7 +42,10 @@ export interface PropertyRepository {
   update: (userId: string, id: string, input: PropertyInput) => Promise<Property | 'duplicate' | null>;
   /** Returns false when the id does not exist or belongs to another account. */
   remove: (userId: string, id: string) => Promise<boolean>;
-  /** Gives all properties without an account to `userId` in one statement. Returns how many were claimed. */
+  /**
+   * Gives all properties without an account to `userId` in one statement, but only on the first call ever.
+   * Returns how many were claimed.
+   */
   claimUnowned: (userId: string) => Promise<number>;
 }
 

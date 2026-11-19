@@ -109,14 +109,15 @@ const oldProperty = {
 };
 
 describe('claim of unowned properties', () => {
-  it('skips an unowned row the account already has, and sign-in still works', async () => {
-    const { repo, signIn } = setup();
-    const a = await signIn('a');
-    await a('POST', '', { street: 'Oldstraat', houseNumber: '1', postalCode: '1000 AA', city: 'Oudstad', ownerName: 'old owner' });
-    repo.seedUnowned(oldProperty);
+  it('skips an unowned row the account already has and never hands it to a later account', async () => {
+    const repo = memoryRepository();
+    await repo.create('a', oldProperty);
+    repo.seedUnowned({ ...oldProperty, ownerName: 'OLD OWNER', notes: 'old private notes' });
     repo.seedUnowned({ ...oldProperty, houseNumber: '2' });
-    const again = await signIn('a');
-    expect(((await (await again('GET')).json()) as { houseNumber: string }[]).map((p) => p.houseNumber)).toEqual(['1', '2']);
+    expect(await repo.claimUnowned('a')).toBe(1);
+    expect(await repo.claimUnowned('b')).toBe(0);
+    expect(await repo.list('b')).toEqual([]);
+    expect((await repo.list('a')).map((p) => p.houseNumber)).toEqual(['1', '2']);
   });
 
   it('does not block sign-in when the claim throws', async () => {
