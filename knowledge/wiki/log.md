@@ -16,3 +16,6 @@ Append-only. Newest entries at the bottom.
 
 ## [2026-11-18] ingest | Home Maintenance Log
 - Raw: raw/stories/2026-11-18-story-20-manage-properties.md
+
+## [2026-11-19] ingest | Story Workflow
+- Raw: raw/process/2026-11-19-factory-story-workflow.md
