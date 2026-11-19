@@ -88,3 +88,6 @@ Append-only. Newest entries at the bottom.
 ## [2026-11-19] ingest | Project Knowledge
 - Raw: raw/process/2026-11-19-project-knowledge-duty.md
 - Updated: Knowledge Base Index (concept map, topics architecture, design, decisions; domain merged into product), GO Value Categories (moved from domain to product), Home Maintenance Log, Home Owner Persona (links), Story Workflow, Factory Spike Lessons
+
+## [2026-11-19] ingest | Story Workflow
+- Raw: raw/process/2026-11-19-human-task-secret-rights.md
