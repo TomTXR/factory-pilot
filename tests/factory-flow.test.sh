@@ -949,5 +949,20 @@ check "DP1 the story never blocks itself" no "issue_id=5000"
 grep -q "factory:depends-on" "$ROOT/factory/automations/breakdown/worker.py" && grep -q "Never ask a human to change anything in GitHub by hand" "$ROOT/factory/automations/breakdown/worker.py" \
   && { pass=$((pass+1)); echo "ok   DP2 the breakdown prompt has the Dependencies section and no manual steps"; } || { fail=$((fail+1)); echo "FAIL DP2 breakdown prompt"; }
 
+
+# RT. /retry returns to the step that stalled: a planning stall plans again, it never builds an unapproved plan.
+setup factory/issue-5 agentbot x
+echo '[]' > "$FX/open_pulls.json"
+jq -n '{node_id:"I_test", user:{login:"alice"}, labels:[{name:"factory:story"},{name:"factory:blocked"}]}' > "$FX/issue.json"
+jq -n '[{user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\n## Summary\nold plan"}]' > "$FX/comments.json"
+jq -n '[{id:1,event:"labeled",label:{name:"factory:plan-review"}},{id:2,event:"labeled",label:{name:"factory:breakdown"}},{id:3,event:"labeled",label:{name:"factory:blocked"}}]' > "$FX/events-5.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/retry", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "RT1 /retry after a planning stall plans again" yes "add-label factory:breakdown"
+check "RT1 /retry after a planning stall never builds the old plan" no "add-label factory:plan-approved"
+jq -n '[{id:1,event:"labeled",label:{name:"factory:plan-approved"}},{id:3,event:"labeled",label:{name:"factory:blocked"}}]' > "$FX/events-5.json"
+: > "$GH_LOG"; FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 901 >/dev/null 2>&1
+check "RT2 /retry after a build stall restarts the builder from the approved plan" yes "add-label factory:plan-approved"
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -138,6 +138,14 @@ blockers() { # issue -> JSON array of the issues it is blocked by (number, state
   gh api "repos/$R/issues/$1/dependencies/blocked_by?per_page=100" | jq -c '[.[] | {number, state, state_reason}]'
 }
 open_blockers() { blockers "$1" | jq -r '.[] | select(.state == "open") | .number'; }
+state_before_block() { # issue -> the factory state the story was in when factory:blocked was last added
+  gh api "repos/$R/issues/$1/events?per_page=100" --paginate | jq -rs '
+    [.[][] | select(.event == "labeled" and (.label.name | startswith("factory:")))] as $ev
+    | ([$ev | to_entries[] | select(.value.label.name == "factory:blocked") | .key] | last) as $b
+    | if $b == null then "" else
+        ([$ev[0:$b][] | .label.name | select(. != "factory:blocked" and . != "factory:story")] | last // "" | sub("^factory:"; ""))
+      end'
+}
 plan_depends() { # issue -> issue numbers listed in the plan's "Dependencies" section (marker <!-- factory:depends-on -->)
   plan_body "$1" | sed -n '/^<!-- factory:depends-on -->$/,/^## /p' | grep -oE '#[0-9]+' | tr -d '#' | grep -vx "$1" | sort -un || true
 }
@@ -609,6 +617,12 @@ case "$cmd" in
           ask "$issue" "$cid" "\`/approve\` retries a blocked release only, and this story is blocked for another reason (or its PR changed since). Reply \`/retry\` to send it back to the agents."
         fi ;;
       blocked:retry)
+        if [ "$(state_before_block "$issue")" = breakdown ]; then
+          # Planning stalled (often a refinement after /changes): plan again, never build an unapproved plan.
+          set_state "$issue" factory:breakdown; board "$issue" Breakdown
+          ack "$issue" "$cid" "Retry $by. The breakdown agent writes the plan again and reads this thread."
+          exit 0
+        fi
         prs=$(open_factory_prs "$issue")
         if [ -n "$prs" ]; then
           for pr in $prs; do review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" failure "Retry requested by $author"; done
