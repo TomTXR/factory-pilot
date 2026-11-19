@@ -896,7 +896,7 @@ relfx factory:approved-for-production "" x
 "$SCRIPT" status 5 "Release blocked: test." "release-blocked 16 sha1" >/dev/null 2>&1
 check "RL11 the status subcommand records a mark (used by land.yml)" yes "^  \| <!-- factory:mark release-blocked 16 sha1 -->$"
 L="$ROOT/.github/workflows/land.yml"
-grep -q 'GH_TOKEN="$BOT_TOKEN" gh pr update-branch' "$L" && [ "$(grep -c 'gh pr update-branch' "$L")" = 1 ] \
+grep -q 'GH_TOKEN="$BOT_TOKEN" gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$PR/update-branch"' "$L" && ! grep -q 'gh pr update-branch' "$L" \
   && { pass=$((pass+1)); echo "ok   RL8 the branch update runs as the machine account only"; } || { fail=$((fail+1)); echo "FAIL RL8 branch update identity"; }
 grep -q 'status=action_required' "$L" && grep -q 'did not start within 3 minutes' "$L" \
   && { pass=$((pass+1)); echo "ok   RL9 held or missing checks block at once"; } || { fail=$((fail+1)); echo "FAIL RL9 silent waiting"; }

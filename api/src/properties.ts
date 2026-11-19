@@ -34,13 +34,14 @@ export type ValidationResult = { ok: true; value: PropertyInput } | { ok: false;
 
 /** Persistence of properties. Injected into the app so routes can be tested without a database. */
 export interface PropertyRepository {
-  list: () => Promise<Property[]>;
-  get: (id: string) => Promise<Property | null>;
-  create: (input: PropertyInput) => Promise<Property | 'duplicate'>;
-  /** Returns null when the id does not exist. */
-  update: (id: string, input: PropertyInput) => Promise<Property | 'duplicate' | null>;
-  /** Returns false when the id does not exist. */
-  remove: (id: string) => Promise<boolean>;
+  /** Every method works on the properties of `userId` only; other accounts' rows do not exist for it. */
+  list: (userId: string) => Promise<Property[]>;
+  get: (userId: string, id: string) => Promise<Property | null>;
+  create: (userId: string, input: PropertyInput) => Promise<Property | 'duplicate'>;
+  /** Returns null when the id does not exist or belongs to another account. */
+  update: (userId: string, id: string, input: PropertyInput) => Promise<Property | 'duplicate' | null>;
+  /** Returns false when the id does not exist or belongs to another account. */
+  remove: (userId: string, id: string) => Promise<boolean>;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -58,8 +59,8 @@ export function collapse(value: string): string {
 }
 
 /**
- * Identity of a property: address plus owner, lower-cased and whitespace-collapsed.
- * The unique index in migration 002 uses the same normalisation.
+ * Identity of a property within one account: address plus owner, lower-cased and whitespace-collapsed.
+ * The unique index in migration 004 uses the same normalisation.
  */
 export function normaliseKey(p: PropertyInput): string {
   return [p.street, p.houseNumber, p.houseNumberAddition, p.postalCode, p.city, p.country, p.ownerName]
