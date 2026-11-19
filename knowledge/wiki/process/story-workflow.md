@@ -1,7 +1,7 @@
 # Story Workflow
 
 > Sources: Product owner decisions in the factory spike, 2026-11-19
-> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md)
+> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -39,6 +39,14 @@ A story moves from the human's idea through an agent plan, an agent build and re
 - Secret values never go into issues or comments (public repository). They are stored as repository secrets named `PILOT_<NAME>`; production receives them on the next deploy, previews and CI never do.
 - The app works without the secrets where possible (labelled test path) or fails with a clear log line.
 - Cancelling a story closes its open tasks. In a split, each part lists its own tasks.
+
+## Follow-up stories
+
+- When a plan proposes to defer work, an approver can answer in free text, for example "Yes, please create a ticket for that". The explicit request is the approval; no further step is needed.
+- `/followup <what>` does the same explicitly, in any state, without changing the story's state.
+- The ticket writer (Opus) writes one story per request from the story, the plan and the comment, in the template sections. Undecided points become open questions; nothing is invented.
+- The factory creates the story with a link to the original story and comment, and starts its breakdown at once. Nothing is built before its plan is approved.
+- Only an explicit request creates a ticket: "later" or "not now" alone does not.
 
 ## See Also
 

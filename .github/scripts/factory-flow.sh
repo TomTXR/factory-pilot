@@ -27,11 +27,14 @@
 #   factory-flow.sh child-closed <issue>     a part of a split story was closed: start the next
 #                                            part, or close the parent when all parts are closed
 #   factory-flow.sh create-tasks <issue> <assignee>  approved plan lists human tasks: create them
+#   factory-flow.sh followups <issue> <comment-id>   an approver asked for follow-up tickets:
+#                                            write them (write-followups.sh), create them and start their breakdown
 #
 # Human tasks (accounts, external consoles, credentials) are sub-issues labelled
 # factory:human-task, assigned to the approver. A release needs all of them closed.
 #
-# Humans steer only with comments: /approve, /changes <text>, /retry, or plain
+# Humans steer only with comments: /approve, /changes <text>, /retry, /cancel,
+# /followup <what> (create a follow-up ticket, any state), or plain
 # text whose intent classify-intent.sh infers at the two gates. Production
 # releases always need an explicit /approve. Labels are factory-managed state.
 # Env: GH_TOKEN, GITHUB_REPOSITORY, FACTORY_AGENT_LOGINS (comma list),
@@ -254,8 +257,12 @@ case "$cmd" in
     if bot_comments "$issue" | jq -e --arg m "<!-- factory:ack $cid -->" 'any(.[]; contains($m))' >/dev/null; then echo "already handled"; exit 0; fi
     state=$(current_state "$issue")
     cmd_line=$(printf '%s\n' "$body" | grep -ioE '^[[:space:]]*/(approve|changes|retry|start|cancel)\b' | head -1 | tr -d '[:space:]' | tr 'A-Z' 'a-z' || true)
-    explicit=yes; intent=""; summary=""
+    explicit=yes; intent=""; summary=""; followup=no
+    if printf '%s\n' "$body" | grep -iqE '^[[:space:]]*/followup\b'; then
+      followup=yes; [ -n "$cmd_line" ] || cmd_line=/followup
+    fi
     case "$cmd_line" in
+      /followup) intent=followup-only ;;
       /approve|/start) intent=approve ;;
       /changes) intent=changes ;;
       /retry) intent=retry ;;
@@ -270,11 +277,18 @@ case "$cmd" in
           [ "$state" = plan-review ] && plan_questions "$issue" > "$ctx"
           res=$("$here/classify-intent.sh" "$state" "$tmp" "$ctx"); rm -f "$tmp" "$ctx"
           intent=$(echo "$res" | jq -r .intent); summary=$(echo "$res" | jq -r .summary)
-          echo "inferred: $intent ($summary)" ;;
+          [ "$(echo "$res" | jq -r '.followup // false')" = true ] && followup=yes
+          echo "inferred: $intent ($summary), followup=$followup" ;;
         *) echo "plain comment outside a gate: no action"; exit 0 ;;
       esac
     fi
     read_as=""; [ "$explicit" = no ] && read_as="Read as: **$intent** - $summary"$'\n\n'
+    # Follow-up tickets first: they never change the state of this story, and a
+    # failure there must not stop the rest of the comment.
+    if [ "$followup" = yes ] && ! "$0" followups "$issue" "$cid"; then
+      echo "::warning::follow-ups failed for comment $cid"
+      gh issue comment "$issue" --repo "$R" --body "The follow-up ticket requested in $curl_url could not be created (a GitHub call failed). The rest of the comment is handled. Reply \`/followup <what>\` to try again." >/dev/null || true
+    fi
     case "$state:$intent" in
       inbox:approve|inbox:changes)
         FACTORY_START_APPROVED=1 "$0" start "$issue" >/dev/null
@@ -335,8 +349,14 @@ case "$cmd" in
         else
           ack "$issue" "$cid" "${read_as}Cancelling a story needs an explicit decision. Reply \`/cancel\` to close it as not planned, or \`/changes <what>\` to change it."
         fi ;;
+      *:followup-only)
+        ack "$issue" "$cid" "Follow-up request by @$author handled (see above). Nothing else changes on this story." ;;
       plan-review:unclear|human-review:unclear)
-        ack "$issue" "$cid" "${read_as}No action taken. Reply \`/approve\` to proceed or \`/changes <what>\` to request changes." ;;
+        if [ "$followup" = yes ]; then
+          ack "$issue" "$cid" "${read_as}Follow-up request handled (see above). No other action. Reply \`/approve\` to proceed or \`/changes <what>\` to request changes."
+        else
+          ack "$issue" "$cid" "${read_as}No action taken. Reply \`/approve\` to proceed or \`/changes <what>\` to request changes."
+        fi ;;
       *)
         if [ "$explicit" = yes ]; then
           ack "$issue" "$cid" "\`$cmd_line\` has no effect in the current state (**$state**). Commands apply at Plan Review and Human Review; \`/retry\` applies when a story is blocked."
@@ -440,6 +460,48 @@ case "$cmd" in
     echo "issue #$issue: $n human task(s) created"
     ;;
 
+  followups)
+    # Only reached from command, i.e. for a comment by an approver.
+    issue="$1"; cid="$2"
+    marker="<!-- factory:followups $cid -->"
+    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "follow-ups of comment $cid already handled"; exit 0; fi
+    c=$(gh api "repos/$R/issues/comments/$cid")
+    author=$(echo "$c" | jq -r .user.login); url=$(echo "$c" | jq -r .html_url)
+    dir=$(mktemp -d)
+    gh api "repos/$R/issues/$issue" | jq -r '"# " + .title + "\n\n" + (.body // "")' > "$dir/story"
+    plan_body "$issue" > "$dir/plan"
+    echo "$c" | jq -r .body > "$dir/comment"
+    res=$("$here/write-followups.sh" "$dir/story" "$dir/plan" "$dir/comment") || res='{"stories":[]}'
+    n=$(echo "$res" | jq '.stories | length')
+    if [ "$n" -eq 0 ]; then
+      gh issue comment "$issue" --repo "$R" --body "$(printf '%s\nNo follow-up story could be written from this comment (%s). Describe it with `/followup <what>`.' "$marker" "$url")" >/dev/null
+      rm -rf "$dir"; echo "no follow-up written"; exit 0
+    fi
+    list=""
+    # Stories of an earlier, interrupted run for this comment are reused, not created again.
+    existing=$(gh api "repos/$R/issues?creator=$BOT&labels=factory:story&state=all&per_page=100" | jq -c '[.[] | {number, body: (.body // "")}]')
+    for k in $(seq 0 $((n - 1))); do
+      title=$(echo "$res" | jq -r ".stories[$k].title")
+      key="<!-- factory:followup-of $issue comment $cid part $k -->"
+      num=$(echo "$existing" | jq -r --arg key "$key" '[.[] | select(.body | startswith($key)) | .number] | first // empty')
+      if [ -n "$num" ]; then list="$list"$'\n'"- #$num $title"; continue; fi
+      {
+        printf '%s\n' "$key"
+        echo "$res" | jq -r ".stories[$k].body"
+        printf '\n---\n_Follow-up of #%s, requested by @%s: %s. Written by the factory from the plan and that comment._\n' "$issue" "$author" "$url"
+      } > "$dir/$k.issue"
+      created=$(gh api -X POST "repos/$R/issues" -f title="$title" -F body=@"$dir/$k.issue" -f 'labels[]=factory:story')
+      num=$(echo "$created" | jq -r .number)
+      board "$num" Inbox
+      # The approver asked for it: the breakdown starts; the build still needs plan approval.
+      FACTORY_START_APPROVED=1 "$0" start "$num" >/dev/null
+      list="$list"$'\n'"- #$num $title"
+    done
+    rm -rf "$dir"
+    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Follow-up stories created** (requested by @%s):\n%s\n\nTheir breakdown starts now; you get a plan to review for each. Nothing is built before you approve that plan.' "$marker" "$author" "$list")" >/dev/null
+    echo "issue #$issue: $n follow-up(s) created"
+    ;;
+
   child-closed)
     # Parts are created by this automation and carry the parent marker in line 1.
     part="$1"
@@ -481,5 +543,5 @@ case "$cmd" in
     echo "issue #$issue reopened -> inbox"
     ;;
 
-  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command|closed|reopened|split|child-closed|create-tasks ..." >&2; exit 2 ;;
+  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command|closed|reopened|split|child-closed|create-tasks|followups ..." >&2; exit 2 ;;
 esac

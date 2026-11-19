@@ -23,5 +23,6 @@ Deployment: `.github/workflows/deploy.yml` calls `deploy/server/pilot-deploy.sh`
 4. **Blocked:** read the bot's explanation, then `/retry` (optionally with instructions).
 5. **Large story:** the plan may propose a split. Approving that plan creates the parts as sub-issues; each part gets its own plan and they are built one after another. The original story closes when all parts are closed. See `knowledge/wiki/process/story-workflow.md`.
 6. **Human tasks** (you get an assignment): work only a human can do, such as an OAuth client in Google Cloud or an API key. Follow the steps in the task, store secret values only as repository secrets named `PILOT_<NAME>` (Settings, Secrets and variables, Actions; never in a comment), then close the task. Production gets these secrets on the next deploy. The release `/approve` waits until all tasks of the story are closed.
+7. **Follow-up tickets:** when a plan proposes to defer something, answer for example "yes, please create a ticket for that" (or `/followup <what>`, in any state). The factory writes the story from the plan and your comment, links it, and starts its breakdown.
 
 The factory manages all `factory:*` labels; you never need to set them. Plain comments are read by an intent classifier only at the two gates and only from approvers; the bot always replies with what it understood.
