@@ -32,7 +32,7 @@
 #                                            part, or close the parent when all parts are closed
 #   factory-flow.sh create-tasks <issue> <assignee>  approved plan lists human tasks: create them
 #   factory-flow.sh unblock <issue>          <issue> was closed: start waiting stories it blocked
-#   factory-flow.sh status <issue> <text>    record progress in the story's status section (no email)
+#   factory-flow.sh status <issue> <text> [mark]  record progress in the story's status section (no email)
 #   factory-flow.sh notify <issue> <text>    ask the approvers to act: comment with @mentions (email)
 #
 # Quiet mode: GitHub emails every participant about every new comment, but not
@@ -845,7 +845,7 @@ case "$cmd" in
     echo "issue #$issue: $n follow-up(s) created"
     ;;
 
-  status) status "$1" "$2"; echo "status of #$1 updated" ;;
+  status) status "$1" "$2" "${3:-}"; echo "status of #$1 updated" ;;
   notify) notify "$1" "$2"; echo "approvers notified on #$1" ;;
 
   child-closed)
