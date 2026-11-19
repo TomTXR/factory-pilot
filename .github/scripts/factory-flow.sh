@@ -128,6 +128,25 @@ open_tasks() { # story -> open human-task sub-issue numbers
   gh api "repos/$R/issues/$1/sub_issues?per_page=100" | jq -r '.[] | select(.state == "open" and ([.labels[]?.name] | index("factory:human-task"))) | .number'
 }
 approver_mentions() { echo "${FACTORY_APPROVERS:-}" | tr ',' '\n' | sed '/^$/d; s/^/@/' | paste -sd' ' -; }
+# Owners get the action notifications of a story. Rule, first match wins (only approvers count):
+#   1. its assignees (set by a human to hand over, or when an approver starts a stranger's story);
+#   2. the owner key that this automation wrote into an issue it created (split part, follow-up);
+#   3. the author of the story;
+#   4. all approvers.
+# Assigning is avoided otherwise: GitHub emails every assignment, which is not an action.
+owner_mentions() { # issue -> "@a @b"
+  local j m
+  j=$(gh api "repos/$R/issues/$1")
+  m=$(echo "$j" | jq -r '.assignees // [] | .[].login' | while read -r u; do is_approver "$u" && echo "@$u"; done | paste -sd' ' -)
+  if [ -z "$m" ] && [ "$(echo "$j" | jq -r .user.login)" = "$BOT" ]; then
+    m=$(echo "$j" | jq -r '.body // ""' | head -3 | sed -nE 's/^<!-- factory:owner ([A-Za-z0-9-]+) -->$/\1/p' | while read -r u; do is_approver "$u" && echo "@$u"; done | paste -sd' ' -)
+  fi
+  if [ -z "$m" ]; then u=$(echo "$j" | jq -r .user.login); is_approver "$u" && m="@$u"; fi
+  [ -n "$m" ] && echo "$m" || approver_mentions
+}
+assign() { # issue login: add an assignee (GitHub notifies the new assignee once)
+  gh api -X POST "repos/$R/issues/$1/assignees" -f "assignees[]=$2" >/dev/null || echo "::warning::could not assign $2 to #$1"
+}
 status() { # issue text [mark]: update the status section at the end of the issue body (edits send no email)
   # Optimistic concurrency: rebuild from a fresh read, skip the write if the issue
   # changed meanwhile (another step or a human edit), verify the line afterwards.
@@ -173,7 +192,7 @@ find_created() { # first-line key -> "number id" of an issue this automation alr
 }
 has_mark() { gh api "repos/$R/issues/$1" | jq -r '.body // ""' | grep -qF "<!-- factory:mark $2 -->"; }
 notify() { # issue text: a human must act; the only bot comments that @mention people
-  gh issue comment "$1" --repo "$R" --body "$(printf '%s\n\n%s' "$(approver_mentions)" "$2")" >/dev/null
+  gh issue comment "$1" --repo "$R" --body "$(printf '%s\n\n%s' "$(owner_mentions "$1")" "$2")" >/dev/null
 }
 react() { gh api -X POST "repos/$R/issues/comments/$1/reactions" -f content="$2" >/dev/null || true; }
 handled() { # comment-id issue: a reaction by this automation, or an old ack comment
@@ -291,7 +310,7 @@ case "$cmd" in
     set_state "$issue" factory:human-review; board "$issue" "Human Review"
     tasks=$(open_tasks "$issue" | sed 's/^/#/' | paste -sd' ' -)
     [ -n "$tasks" ] && tasks="- **Open human tasks:** $tasks (close them when done; the release waits for them)"$'\n'
-    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n%s\n\n## Test request\n\nThe change for this story is ready for your review.\n\n- **Test version:** https://%s\n- **Pull request:** #%s (commit %s), CI green, reviewer agent approved\n%s\nPlease check the acceptance criteria of this issue on the test version (also on your phone). Then reply with a comment:\n\n- describe what must change (or `/changes <what>`): the builder revises the pull request, or\n- `/approve` to merge and deploy to production. A release always needs the explicit `/approve`.' "$marker" "$(approver_mentions)" "$host" "$pr" "${head:0:7}" "$tasks")" >/dev/null
+    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n%s\n\n## Test request\n\nThe change for this story is ready for your review.\n\n- **Test version:** https://%s\n- **Pull request:** #%s (commit %s), CI green, reviewer agent approved\n%s\nPlease check the acceptance criteria of this issue on the test version (also on your phone). Then reply with a comment:\n\n- describe what must change (or `/changes <what>`): the builder revises the pull request, or\n- `/approve` to merge and deploy to production. A release always needs the explicit `/approve`.' "$marker" "$(owner_mentions "$issue")" "$host" "$pr" "${head:0:7}" "$tasks")" >/dev/null
     echo "issue #$issue -> human review"
     ;;
 
@@ -305,7 +324,7 @@ case "$cmd" in
     [ -n "$plan_id" ] || { echo "no plan comment by an agent yet"; exit 0; }
     marker="<!-- factory:plan-ready $plan_id -->"
     if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null || has_mark "$issue" "plan-ready $plan_id"; then echo "already notified"; exit 0; fi
-    mentions=$(approver_mentions)
+    mentions=$(owner_mentions "$issue")
     if [ -z "$mentions" ]; then
       # Without approvers the notification would reach nobody; fail before writing the marker.
       echo "::error::FACTORY_APPROVERS is empty; cannot notify approvers" >&2; exit 1
@@ -336,6 +355,12 @@ case "$cmd" in
     opener=$(gh api "repos/$R/issues/$issue" | jq -r .user.login)
     if [ "${FACTORY_START_APPROVED:-}" != 1 ] && ! is_approver "$opener"; then
       echo "issue #$issue by $opener waits for an approver"; exit 0
+    fi
+    # A stranger's story started by an approver: that approver takes it over (one
+    # assignment email, a real hand-over). Set before the agent reads the issue.
+    if ! is_approver "$opener" && [ "$opener" != "$BOT" ] && [ -n "${FACTORY_STARTED_BY:-}" ] \
+       && [ "$(gh api "repos/$R/issues/$issue" | jq '.assignees // [] | length')" -eq 0 ]; then
+      assign "$issue" "$FACTORY_STARTED_BY"
     fi
     set_state "$issue" factory:breakdown; board "$issue" Breakdown
     status "$issue" "Agent: Planning. The breakdown agent writes a plan within about 5 minutes; the approvers are notified when it is ready." 
@@ -386,7 +411,7 @@ case "$cmd" in
     fi
     case "$state:$intent" in
       inbox:approve|inbox:changes)
-        FACTORY_START_APPROVED=1 "$0" start "$issue" >/dev/null
+        FACTORY_START_APPROVED=1 FACTORY_STARTED_BY="$author" "$0" start "$issue" >/dev/null
         ack "$issue" "$cid" "Breakdown started $by." ;;
       plan-review:approve)
         dir=$(mktemp -d); parts=$(split_parts "$issue" "$dir"); rm -rf "$dir"
@@ -546,7 +571,7 @@ case "$cmd" in
         list="$list"$'\n'"- #$num $title"; prev="$num"; continue
       fi
       {
-        printf '%s\n' "$key"
+        printf '%s\n<!-- factory:owner %s -->\n' "$key" "$author"
         printf '_Part %s of %s of #%s (split approved by %s). The parent issue holds the full plan and the answers to its open questions._\n' "$k" "$n" "$issue" "$author"
         if [ -n "$prev" ]; then printf '_Starts when #%s is done._\n' "$prev"; fi
         printf '\n'; cat "$dir/$k.body" 2>/dev/null || true
@@ -625,7 +650,7 @@ case "$cmd" in
       found=$(find_created "$key")
       if [ -n "$found" ]; then list="$list"$'\n'"- #${found%% *} $title"; continue; fi
       {
-        printf '%s\n' "$key"
+        printf '%s\n<!-- factory:owner %s -->\n' "$key" "$author"
         echo "$res" | jq -r ".stories[$k].body"
         printf '\n---\n_Follow-up of #%s, requested by %s: %s. Written by the factory from the plan and that comment._\n' "$issue" "$author" "$url"
       } > "$dir/$k.issue"
