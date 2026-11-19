@@ -28,6 +28,13 @@
 #                                            part, or close the parent when all parts are closed
 #   factory-flow.sh create-tasks <issue> <assignee>  approved plan lists human tasks: create them
 #   factory-flow.sh unblock <issue>          <issue> was closed: start waiting stories it blocked
+#   factory-flow.sh status <issue> <text>    record progress in the story's status section (no email)
+#   factory-flow.sh notify <issue> <text>    ask the approvers to act: comment with @mentions (email)
+#
+# Quiet mode: GitHub emails every participant about every new comment, but not
+# about edits or reactions. So progress goes into a status section at the end of
+# the issue body (edited in place), a handled human comment gets a reaction, and
+# only messages that need a human action are new comments that @mention people.
 #
 # Dependencies are GitHub's native "blocked by" relations. Planning runs at once;
 # a story whose plan is approved while a blocker is open waits (factory:waiting)
@@ -120,8 +127,50 @@ add_blocker() { # issue blocker: <issue> is blocked by <blocker>
 open_tasks() { # story -> open human-task sub-issue numbers
   gh api "repos/$R/issues/$1/sub_issues?per_page=100" | jq -r '.[] | select(.state == "open" and ([.labels[]?.name] | index("factory:human-task"))) | .number'
 }
-ack() { # issue comment-id text: one bot reply per human comment
-  gh issue comment "$1" --repo "$R" --body "$(printf '<!-- factory:ack %s -->\n%s' "$2" "$3")" >/dev/null
+approver_mentions() { echo "${FACTORY_APPROVERS:-}" | tr ',' '\n' | sed '/^$/d; s/^/@/' | paste -sd' ' -; }
+status() { # issue text [mark]: update the status section at the end of the issue body (edits send no email)
+  local issue="$1" text="$2" mark="${3:-}" f body pre post block hist marks now
+  f=$(mktemp)
+  body=$(gh api "repos/$R/issues/$issue" | jq -r '.body // ""' | tr -d '\r')
+  if printf '%s\n' "$body" | grep -qx '<!-- factory:status:start -->'; then
+    pre=$(printf '%s\n' "$body" | sed '/^<!-- factory:status:start -->$/,$d')
+    post=$(printf '%s\n' "$body" | sed '1,/^<!-- factory:status:end -->$/d')
+    block=$(printf '%s\n' "$body" | sed -n '/^<!-- factory:status:start -->$/,/^<!-- factory:status:end -->$/p')
+  else
+    pre="$body"; post=""; block=""
+  fi
+  hist=$(printf '%s\n' "$block" | grep '^- ' | tail -29 || true)
+  marks=$(printf '%s\n' "$block" | grep '^<!-- factory:mark ' || true)
+  now=$(date -u +'%Y-%m-%d %H:%M')
+  [ -n "$mark" ] && marks=$(printf '%s\n<!-- factory:mark %s -->' "$marks" "$mark" | sed '/^$/d')
+  text=$(printf '%s' "$text" | tr '\n' ' ')
+  {
+    printf '%s\n\n' "$(printf '%s' "$pre" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
+    printf '<!-- factory:status:start -->\n---\n**Factory status** (%s UTC): %s\n\n<details><summary>History</summary>\n\n' "$now" "$text"
+    [ -n "$hist" ] && printf '%s\n' "$hist"
+    printf -- '- %s %s\n\n</details>\n' "$now" "$text"
+    [ -n "$marks" ] && printf '%s\n' "$marks"
+    printf '<!-- factory:status:end -->\n'
+    [ -n "$post" ] && printf '%s\n' "$post"
+  } > "$f"
+  gh api -X PATCH "repos/$R/issues/$issue" -F body=@"$f" >/dev/null || echo "::warning::status update of #$issue failed"
+  rm -f "$f"
+}
+has_mark() { gh api "repos/$R/issues/$1" | jq -r '.body // ""' | grep -qF "<!-- factory:mark $2 -->"; }
+notify() { # issue text: a human must act; the only bot comments that @mention people
+  gh issue comment "$1" --repo "$R" --body "$(printf '%s\n\n%s' "$(approver_mentions)" "$2")" >/dev/null
+}
+react() { gh api -X POST "repos/$R/issues/comments/$1/reactions" -f content="$2" >/dev/null || true; }
+handled() { # comment-id issue: a reaction by this automation, or an old ack comment
+  gh api "repos/$R/issues/comments/$1/reactions" | jq -e --arg bot "$BOT" 'any(.[]; .user.login == $bot)' >/dev/null && return 0
+  bot_comments "$2" | jq -e --arg m "<!-- factory:ack $1 -->" 'any(.[]; contains($m))' >/dev/null
+}
+ack() { # issue comment-id text: done; thumbs-up on the comment, text into the status (no email)
+  react "$2" +1; status "$1" "$3"
+}
+ask() { # issue comment-id text: the commenter must act again; reply with a mention of the author only
+  react "$2" eyes
+  gh issue comment "$1" --repo "$R" --body "$(printf '<!-- factory:ack %s -->\n@%s %s' "$2" "$ACK_TO" "$3")" >/dev/null
 }
 is_approver() { echo ",${FACTORY_APPROVERS:-}," | grep -qi ",$1,"; }
 emit() { [ -n "${GITHUB_OUTPUT:-}" ] && echo "$1" >> "$GITHUB_OUTPUT"; echo "output: $1"; }
@@ -149,6 +198,7 @@ case "$cmd" in
     esac
     gh pr edit "$pr" --repo "$R" --add-label factory:agent-review >/dev/null
     set_state "$issue" factory:agent-review; board "$issue" "Agent Review"
+    status "$issue" "Agent: Reviewing PR #$pr."
     echo "issue #$issue -> agent review (PR #$pr)"
     ;;
 
@@ -171,7 +221,7 @@ case "$cmd" in
         "$0" ready-check "$pr" ;;
       "⏸ INCONCLUSIVE")
         set_state "$issue" factory:blocked; board "$issue" Blocked
-        gh issue comment "$issue" --repo "$R" --body "Blocked: the reviewer agent could not reach a verdict on PR #$pr ($url). A human must decide." >/dev/null ;;
+        notify "$issue" "**Blocked:** the reviewer agent could not reach a verdict on PR #$pr ($url). Decide, then reply \`/retry\` or \`/changes <what>\`." ;;
       *) echo "no verdict marker, nothing to do" ;;
     esac
     ;;
@@ -179,10 +229,13 @@ case "$cmd" in
   rework)
     issue="$1"; reason="$2"
     n=$(bot_comments "$issue" | jq '[.[] | select(contains("<!-- factory:rework -->"))] | length')
+    for p in $(gh api "repos/$R/pulls?state=all&per_page=100" | jq -r --arg ref "factory/issue-$issue" '.[] | select(.head.ref == $ref) | .number'); do
+      n=$((n + $(bot_comments "$p" | jq '[.[] | select(contains("<!-- factory:rework -->"))] | length')))
+    done
     if [ "$n" -ge "$MAX_REWORK" ]; then
       for pr in $(open_factory_prs "$issue"); do review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" pending "Blocked: rework limit reached"; done
       set_state "$issue" factory:blocked; board "$issue" Blocked
-      gh issue comment "$issue" --repo "$R" --body "Blocked: $n rework loops reached the limit of $MAX_REWORK. A human must decide how to continue." >/dev/null
+      notify "$issue" "**Blocked:** $n rework loops reached the limit of $MAX_REWORK. Decide how to continue, then reply \`/retry\` (optionally with instructions)." 
       echo "issue #$issue -> blocked (rework limit)"; exit 0
     fi
     prs=$(open_factory_prs "$issue")
@@ -192,7 +245,7 @@ case "$cmd" in
         gh pr comment "$pr" --repo "$R" --body "$(printf '<!-- factory:rework -->\n**Changes requested (rework %s of %s).** Address this in this PR:\n\n%s' "$((n+1))" "$MAX_REWORK" "$reason")" >/dev/null
         review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" failure "Changes requested (rework $((n+1)) of $MAX_REWORK)"
       done
-      gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:rework -->\n**Rework %s of %s.** The builder revises PR #%s.\n\n%s' "$((n+1))" "$MAX_REWORK" "$(echo $prs | tr ' ' ',')" "$reason")" >/dev/null
+      status "$issue" "Rework $((n+1)) of $MAX_REWORK: the builder revises PR #$(echo $prs | tr ' ' ',') (reason on the PR)." 
       set_state "$issue" factory:rework; board "$issue" Rework
       echo "issue #$issue -> rework $((n+1)), builder revises PR $prs"; exit 0
     fi
@@ -220,7 +273,7 @@ case "$cmd" in
     set_state "$issue" factory:human-review; board "$issue" "Human Review"
     tasks=$(open_tasks "$issue" | sed 's/^/#/' | paste -sd' ' -)
     [ -n "$tasks" ] && tasks="- **Open human tasks:** $tasks (close them when done; the release waits for them)"$'\n'
-    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n## Test request\n\nThe change for this story is ready for your review.\n\n- **Test version:** https://%s\n- **Pull request:** #%s (commit %s), CI green, reviewer agent approved\n%s\nPlease check the acceptance criteria of this issue on the test version (also on your phone). Then reply with a comment:\n\n- describe what must change (or `/changes <what>`): the builder revises the pull request, or\n- `/approve` to merge and deploy to production. A release always needs the explicit `/approve`.' "$marker" "$host" "$pr" "${head:0:7}" "$tasks")" >/dev/null
+    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n%s\n\n## Test request\n\nThe change for this story is ready for your review.\n\n- **Test version:** https://%s\n- **Pull request:** #%s (commit %s), CI green, reviewer agent approved\n%s\nPlease check the acceptance criteria of this issue on the test version (also on your phone). Then reply with a comment:\n\n- describe what must change (or `/changes <what>`): the builder revises the pull request, or\n- `/approve` to merge and deploy to production. A release always needs the explicit `/approve`.' "$marker" "$(approver_mentions)" "$host" "$pr" "${head:0:7}" "$tasks")" >/dev/null
     echo "issue #$issue -> human review"
     ;;
 
@@ -233,11 +286,20 @@ case "$cmd" in
       '[.[][] | (.user.login | ascii_downcase) as $u | select(($agents | ascii_downcase | contains("," + $u + ",")) and (.body | startswith("<!-- factory:breakdown -->")))] | last | .id // empty')
     [ -n "$plan_id" ] || { echo "no plan comment by an agent yet"; exit 0; }
     marker="<!-- factory:plan-ready $plan_id -->"
-    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "already notified"; exit 0; fi
-    mentions=$(echo "${FACTORY_APPROVERS:-}" | tr ',' '\n' | sed '/^$/d; s/^/@/' | paste -sd' ' -)
+    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null || has_mark "$issue" "plan-ready $plan_id"; then echo "already notified"; exit 0; fi
+    mentions=$(approver_mentions)
     if [ -z "$mentions" ]; then
       # Without approvers the notification would reach nobody; fail before writing the marker.
       echo "::error::FACTORY_APPROVERS is empty; cannot notify approvers" >&2; exit 1
+    fi
+    # The breakdown agent ends its plan with the review request and the approvers'
+    # mentions: one comment, one email. Fall back to a separate notice if any is missing.
+    plan=$(plan_body "$issue")
+    missing=""
+    for m in $mentions; do printf '%s' "$plan" | grep -qiF -- "$m" || missing="$missing $m"; done
+    if [ -z "$missing" ]; then
+      status "$issue" "Human: Review plan (the plan comment asks the approvers)." "plan-ready $plan_id"
+      echo "issue #$issue: plan asks the approvers itself"; exit 0
     fi
     dir=$(mktemp -d); parts=$(split_parts "$issue" "$dir"); rm -rf "$dir"
     approve_text='`/approve` (or write that the plan is fine) to start building.'
@@ -258,7 +320,7 @@ case "$cmd" in
       echo "issue #$issue by $opener waits for an approver"; exit 0
     fi
     set_state "$issue" factory:breakdown; board "$issue" Breakdown
-    gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:started -->\n**Breakdown started.** The breakdown agent writes a plan with acceptance criteria and questions within about 5 minutes. You will be notified when it is ready.')" >/dev/null
+    status "$issue" "Agent: Planning. The breakdown agent writes a plan within about 5 minutes; the approvers are notified when it is ready." 
     echo "issue #$issue -> breakdown"
     ;;
 
@@ -267,7 +329,8 @@ case "$cmd" in
     c=$(gh api "repos/$R/issues/comments/$cid")
     author=$(echo "$c" | jq -r .user.login); body=$(echo "$c" | jq -r .body); curl_url=$(echo "$c" | jq -r .html_url)
     if ! is_approver "$author" || [ "$(echo "$c" | jq -r .user.type)" != "User" ]; then echo "ignored: $author is not an approver"; exit 0; fi
-    if bot_comments "$issue" | jq -e --arg m "<!-- factory:ack $cid -->" 'any(.[]; contains($m))' >/dev/null; then echo "already handled"; exit 0; fi
+    if handled "$cid" "$issue"; then echo "already handled"; exit 0; fi
+    ACK_TO="$author"
     state=$(current_state "$issue")
     cmd_line=$(printf '%s\n' "$body" | grep -ioE '^[[:space:]]*/(approve|changes|retry|start|cancel)\b' | head -1 | tr -d '[:space:]' | tr 'A-Z' 'a-z' || true)
     explicit=yes; intent=""; summary=""; followup=no
@@ -295,22 +358,23 @@ case "$cmd" in
         *) echo "plain comment outside a gate: no action"; exit 0 ;;
       esac
     fi
-    read_as=""; [ "$explicit" = no ] && read_as="Read as: **$intent** - $summary"$'\n\n'
+    read_as=""; [ "$explicit" = no ] && read_as="Read as: $intent - $summary. "
+    by="by $author"   # names without @: only action requests notify people
     # Follow-up tickets first: they never change the state of this story, and a
     # failure there must not stop the rest of the comment.
     if [ "$followup" = yes ] && ! "$0" followups "$issue" "$cid"; then
       echo "::warning::follow-ups failed for comment $cid"
-      gh issue comment "$issue" --repo "$R" --body "The follow-up ticket requested in $curl_url could not be created (a GitHub call failed). The rest of the comment is handled. Reply \`/followup <what>\` to try again." >/dev/null || true
+      gh issue comment "$issue" --repo "$R" --body "@$author The follow-up ticket requested in $curl_url could not be created (a GitHub call failed). The rest of the comment is handled. Reply \`/followup <what>\` to try again." >/dev/null || true
     fi
     case "$state:$intent" in
       inbox:approve|inbox:changes)
         FACTORY_START_APPROVED=1 "$0" start "$issue" >/dev/null
-        ack "$issue" "$cid" "Breakdown started by @$author." ;;
+        ack "$issue" "$cid" "Breakdown started $by." ;;
       plan-review:approve)
         dir=$(mktemp -d); parts=$(split_parts "$issue" "$dir"); rm -rf "$dir"
         if [ "$parts" -ge 2 ]; then
           "$0" split "$issue" "$author"
-          ack "$issue" "$cid" "${read_as}**Plan approved with split** by @$author. The story is split into $parts stories (see above)."
+          ack "$issue" "$cid" "${read_as}Plan approved with split $by: $parts stories created as sub-issues."
         else
           tasks_note=""
           dir=$(mktemp -d); ntasks=$(plan_tasks "$issue" "$dir"); rm -rf "$dir"
@@ -321,69 +385,69 @@ case "$cmd" in
           waiting=$(open_blockers "$issue" | sed 's/^/#/' | paste -sd' ' -)
           if [ -n "$waiting" ]; then
             set_state "$issue" factory:waiting; board "$issue" Waiting
-            ack "$issue" "$cid" "${read_as}**Plan approved** by @$author. The build waits for $waiting (blocked by). It starts automatically when they are done; \`/start\` builds now anyway.$tasks_note"
+            ack "$issue" "$cid" "${read_as}Plan approved $by. Waiting: the build waits for $waiting and starts automatically when they are done; /start builds now anyway.$tasks_note"
           else
             set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
-            ack "$issue" "$cid" "${read_as}**Plan approved** by @$author. The builder starts within about 5 minutes.$tasks_note"
+            ack "$issue" "$cid" "${read_as}Plan approved $by. Agent: Building starts within about 5 minutes.$tasks_note"
           fi
         fi ;;
       waiting:approve)
         if [ "$explicit" = yes ]; then
           set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
-          ack "$issue" "$cid" "**Build started** by @$author although it is blocked by $(open_blockers "$issue" | sed 's/^/#/' | paste -sd' ' -). The builder starts within about 5 minutes."
+          ack "$issue" "$cid" "Build started $by although it is blocked by $(open_blockers "$issue" | sed 's/^/#/' | paste -sd' ' -). The builder starts within about 5 minutes."
         fi ;;
       plan-review:changes)
         set_state "$issue" factory:breakdown; board "$issue" Breakdown
-        ack "$issue" "$cid" "${read_as}**Plan changes requested** by @$author. The breakdown agent writes a refined plan that includes your comment, within about 5 minutes." ;;
+        ack "$issue" "$cid" "${read_as}Plan changes requested $by. The breakdown agent writes a refined plan within about 5 minutes." ;;
       human-review:approve)
         tasks=$(open_tasks "$issue" | sed 's/^/#/' | paste -sd' ' -)
         if [ "$explicit" = yes ] && [ -n "$tasks" ]; then
-          ack "$issue" "$cid" "**Release on hold.** These human tasks are still open: $tasks. Close each one when it is done, then reply \`/approve\` again."
+          ask "$issue" "$cid" "**Release on hold.** These human tasks are still open: $tasks. Close each one when it is done, then reply \`/approve\` again."
         elif [ "$explicit" = yes ]; then
           set_state "$issue" factory:approved-for-production; board "$issue" Deploying
-          ack "$issue" "$cid" "**Release approved** by @$author. Merging and deploying to production; this issue moves to Done after the smoke check."
+          ack "$issue" "$cid" "Release approved $by. Agent: Deploying (merge, production deploy, smoke check)."
           emit land=true
         else
-          ack "$issue" "$cid" "${read_as}A release to production needs an explicit decision. Reply \`/approve\` to merge and deploy, or \`/changes <what>\` to request changes."
+          ask "$issue" "$cid" "${read_as}A release to production needs an explicit decision. Reply \`/approve\` to merge and deploy, or \`/changes <what>\` to request changes."
         fi ;;
       human-review:changes)
-        ack "$issue" "$cid" "${read_as}**Changes requested** by @$author. The builder revises the pull request."
-        "$0" rework "$issue" "$(printf 'Changes requested by @%s (%s):\n\n> %s' "$author" "$curl_url" "$(printf '%s' "$body" | sed 's/^/> /' | tail -c 3000)")" ;;
+        ack "$issue" "$cid" "${read_as}Changes requested $by. Agent: Reworking the pull request."
+        "$0" rework "$issue" "$(printf 'Changes requested by %s (%s):\n\n> %s' "$author" "$curl_url" "$(printf '%s' "$body" | sed 's/^/> /' | tail -c 3000)")" ;;
       blocked:retry)
         prs=$(open_factory_prs "$issue")
         if [ -n "$prs" ]; then
           for pr in $prs; do review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" failure "Retry requested by $author"; done
           set_state "$issue" factory:rework; board "$issue" Rework
-          ack "$issue" "$cid" "**Retry** by @$author. The builder revises PR $(echo $prs | tr ' ' ',') and reads this thread."
+          ack "$issue" "$cid" "Retry $by. The builder revises PR $(echo $prs | tr ' ' ',') and reads this thread."
         elif [ "$(gh api "repos/$R/issues/$issue/comments" --paginate | jq -s --arg agents ",$AGENTS," '[.[][] | (.user.login | ascii_downcase) as $u | select(($agents | ascii_downcase | contains("," + $u + ",")) and (.body | startswith("<!-- factory:breakdown -->")))] | length')" -gt 0 ]; then
           set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
-          ack "$issue" "$cid" "**Retry** by @$author. The builder starts again from the approved plan."
+          ack "$issue" "$cid" "Retry $by. The builder starts again from the approved plan."
         else
           set_state "$issue" factory:breakdown; board "$issue" Breakdown
-          ack "$issue" "$cid" "**Retry** by @$author. The breakdown agent starts again."
+          ack "$issue" "$cid" "Retry $by. The breakdown agent starts again."
         fi ;;
       done:cancel|cancelled:cancel)
-        ack "$issue" "$cid" "This story is already closed (**$state**)." ;;
+        ask "$issue" "$cid" "This story is already closed (**$state**)." ;;
       *:cancel)
         if [ "$explicit" = yes ]; then
-          ack "$issue" "$cid" "**Story cancelled** by @$author. Open pull requests are closed and previews removed."
+          ack "$issue" "$cid" "Story cancelled $by. Open pull requests are closed and previews removed."
           # Close first: closed -> child-closed must see this issue as closed.
           gh issue close "$issue" --repo "$R" --reason "not planned" >/dev/null
           "$0" closed "$issue" not_planned
         else
-          ack "$issue" "$cid" "${read_as}Cancelling a story needs an explicit decision. Reply \`/cancel\` to close it as not planned, or \`/changes <what>\` to change it."
+          ask "$issue" "$cid" "${read_as}Cancelling a story needs an explicit decision. Reply \`/cancel\` to close it as not planned, or \`/changes <what>\` to change it."
         fi ;;
       *:followup-only)
-        ack "$issue" "$cid" "Follow-up request by @$author handled (see above). Nothing else changes on this story." ;;
+        ack "$issue" "$cid" "Follow-up request $by handled. Nothing else changes on this story." ;;
       plan-review:unclear|human-review:unclear)
         if [ "$followup" = yes ]; then
-          ack "$issue" "$cid" "${read_as}Follow-up request handled (see above). No other action. Reply \`/approve\` to proceed or \`/changes <what>\` to request changes."
+          ask "$issue" "$cid" "${read_as}Follow-up request handled (see the status at the end of the issue). No other action. Reply \`/approve\` to proceed or \`/changes <what>\` to request changes."
         else
-          ack "$issue" "$cid" "${read_as}No action taken. Reply \`/approve\` to proceed or \`/changes <what>\` to request changes."
+          ask "$issue" "$cid" "${read_as}No action taken. Reply \`/approve\` to proceed or \`/changes <what>\` to request changes."
         fi ;;
       *)
         if [ "$explicit" = yes ]; then
-          ack "$issue" "$cid" "\`$cmd_line\` has no effect in the current state (**$state**). Commands apply at Plan Review and Human Review; \`/retry\` applies when a story is blocked."
+          ask "$issue" "$cid" "\`$cmd_line\` has no effect in the current state (**$state**). Commands apply at Plan Review and Human Review; \`/retry\` applies when a story is blocked."
         fi ;;
     esac
     ;;
@@ -403,6 +467,7 @@ case "$cmd" in
           emit "cleanup_pr=$pr"
         done
         set_state "$issue" factory:cancelled; board "$issue" Cancelled
+        status "$issue" "Cancelled. Closed PRs: ${prs:-none}."
         echo "issue #$issue -> cancelled (closed PRs: ${prs:-none})"
         for task in $(open_tasks "$issue"); do
           gh issue close "$task" --repo "$R" --reason "not planned" --comment "Closed: story #$issue was cancelled." >/dev/null
@@ -436,11 +501,11 @@ case "$cmd" in
       if [ "$(echo "$bl" | jq '[.[] | select(.state == "open")] | length')" -gt 0 ]; then echo "#$w still blocked"; continue; fi
       dropped=$(echo "$bl" | jq -r '.[] | select(.state_reason != "completed") | "#\(.number)"' | paste -sd' ' -)
       if [ -n "$dropped" ]; then
-        gh issue comment "$w" --repo "$R" --body "Blocker $dropped was closed without being completed. This story keeps waiting. Reply \`/start\` to build it anyway, or \`/cancel\` to drop it." >/dev/null
+        notify "$w" "Blocker $dropped was closed without being completed. This story keeps waiting. Reply \`/start\` to build it anyway, or \`/cancel\` to drop it." 
         echo "#$w: blocker dropped, asked the approvers"; continue
       fi
       set_state "$w" factory:plan-approved; board "$w" "In Progress"
-      gh issue comment "$w" --repo "$R" --body "All blockers are done (last: #$issue). The builder starts within about 5 minutes." >/dev/null
+      status "$w" "All blockers are done (last: #$issue). Agent: Building starts within about 5 minutes." 
       echo "#$w unblocked -> plan approved"
     done
     ;;
@@ -448,7 +513,7 @@ case "$cmd" in
   split)
     # Runs only after an approver approved a plan with a "Proposed split" section.
     issue="$1"; author="$2"
-    if bot_comments "$issue" | jq -e 'any(.[]; contains("<!-- factory:split-done -->"))' >/dev/null; then echo "issue #$issue already split"; exit 0; fi
+    if bot_comments "$issue" | jq -e 'any(.[]; contains("<!-- factory:split-done -->"))' >/dev/null || has_mark "$issue" split-done; then echo "issue #$issue already split"; exit 0; fi
     dir=$(mktemp -d); n=$(split_parts "$issue" "$dir")
     [ "$n" -ge 2 ] || { echo "::error::the plan of #$issue proposes no split" >&2; exit 1; }
     prev=""; first=""; list=""
@@ -456,7 +521,7 @@ case "$cmd" in
       title=$(head -1 "$dir/$k.title")
       {
         printf '<!-- factory:child-of %s -->\n' "$issue"
-        printf '_Part %s of %s of #%s (split approved by @%s). The parent issue holds the full plan and the answers to its open questions._\n' "$k" "$n" "$issue" "$author"
+        printf '_Part %s of %s of #%s (split approved by %s). The parent issue holds the full plan and the answers to its open questions._\n' "$k" "$n" "$issue" "$author"
         if [ -n "$prev" ]; then printf '_Starts when #%s is done._\n' "$prev"; fi
         printf '\n'; cat "$dir/$k.body" 2>/dev/null || true
       } > "$dir/$k.issue"
@@ -473,7 +538,7 @@ case "$cmd" in
     done
     rm -rf "$dir"
     set_state "$issue" factory:split; board "$issue" Split
-    gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:split-done -->\n**Story split** into %s stories (sub-issues of this issue):\n%s\n\n#%s starts now with its own plan. Each next story starts when the previous one is done. This issue closes when all of them are closed.' "$n" "$list" "$first")" >/dev/null
+    status "$issue" "Split into $n stories:$(echo "$list" | sed 's/^- / /' | paste -sd',' -). #$first starts now with its own plan; each next one starts when the previous one is done. This issue closes when all are closed." split-done
     FACTORY_START_APPROVED=1 "$0" start "$first"
     echo "issue #$issue -> split into $n stories, #$first started"
     ;;
@@ -484,7 +549,7 @@ case "$cmd" in
     plan_id=$(gh api "repos/$R/issues/$issue/comments" --paginate | jq -rs --arg agents ",$AGENTS," \
       '[.[][] | (.user.login | ascii_downcase) as $u | select(($agents | ascii_downcase | contains("," + $u + ",")) and (.body | startswith("<!-- factory:breakdown -->")))] | last | .id // empty')
     marker="<!-- factory:tasks-created $plan_id -->"
-    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "tasks of plan $plan_id already created"; exit 0; fi
+    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null || has_mark "$issue" "tasks-created $plan_id"; then echo "tasks of plan $plan_id already created"; exit 0; fi
     dir=$(mktemp -d); n=$(plan_tasks "$issue" "$dir"); list=""
     for k in $(seq 1 "$n"); do
       title=$(head -1 "$dir/$k.title")
@@ -501,7 +566,8 @@ case "$cmd" in
       list="$list"$'\n'"- #$num $title"
     done
     rm -rf "$dir"
-    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Human tasks** for @%s (only a human can do these):\n%s\n\nThe build starts now. The release to production waits until all tasks are closed.' "$marker" "$assignee" "$list")" >/dev/null
+    # The assignment notifies the assignee; no extra comment.
+    status "$issue" "Human tasks for $assignee (assigned):$(echo "$list" | sed 's/^- / /' | paste -sd',' -). The release waits until all are closed." "tasks-created $plan_id"
     echo "issue #$issue: $n human task(s) created"
     ;;
 
@@ -509,7 +575,7 @@ case "$cmd" in
     # Only reached from command, i.e. for a comment by an approver.
     issue="$1"; cid="$2"
     marker="<!-- factory:followups $cid -->"
-    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "follow-ups of comment $cid already handled"; exit 0; fi
+    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null || has_mark "$issue" "followups $cid"; then echo "follow-ups of comment $cid already handled"; exit 0; fi
     c=$(gh api "repos/$R/issues/comments/$cid")
     author=$(echo "$c" | jq -r .user.login); url=$(echo "$c" | jq -r .html_url)
     dir=$(mktemp -d)
@@ -519,7 +585,7 @@ case "$cmd" in
     res=$("$here/write-followups.sh" "$dir/story" "$dir/plan" "$dir/comment") || res='{"stories":[]}'
     n=$(echo "$res" | jq '.stories | length')
     if [ "$n" -eq 0 ]; then
-      gh issue comment "$issue" --repo "$R" --body "$(printf '%s\nNo follow-up story could be written from this comment (%s). Describe it with `/followup <what>`.' "$marker" "$url")" >/dev/null
+      gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n@%s No follow-up story could be written from your comment (%s). Describe it with `/followup <what>`.' "$marker" "$author" "$url")" >/dev/null
       rm -rf "$dir"; echo "no follow-up written"; exit 0
     fi
     list=""
@@ -533,7 +599,7 @@ case "$cmd" in
       {
         printf '%s\n' "$key"
         echo "$res" | jq -r ".stories[$k].body"
-        printf '\n---\n_Follow-up of #%s, requested by @%s: %s. Written by the factory from the plan and that comment._\n' "$issue" "$author" "$url"
+        printf '\n---\n_Follow-up of #%s, requested by %s: %s. Written by the factory from the plan and that comment._\n' "$issue" "$author" "$url"
       } > "$dir/$k.issue"
       created=$(gh api -X POST "repos/$R/issues" -f title="$title" -F body=@"$dir/$k.issue" -f 'labels[]=factory:story')
       num=$(echo "$created" | jq -r .number)
@@ -545,9 +611,12 @@ case "$cmd" in
       list="$list"$'\n'"- #$num $title"
     done
     rm -rf "$dir"
-    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Follow-up stories created** (requested by @%s):\n%s\n\nTheir breakdown starts now; you get a plan to review for each. Each is blocked by this story: after plan approval its build waits until this story is done.' "$marker" "$author" "$list")" >/dev/null
+    status "$issue" "Follow-up stories created (requested by $author):$(echo "$list" | sed 's/^- / /' | paste -sd',' -). Their planning starts now; each is blocked by this story." "followups $cid"
     echo "issue #$issue: $n follow-up(s) created"
     ;;
+
+  status) status "$1" "$2"; echo "status of #$1 updated" ;;
+  notify) notify "$1" "$2"; echo "approvers notified on #$1" ;;
 
   child-closed)
     # Parts are created by this automation and carry the parent marker in line 1.
@@ -561,11 +630,11 @@ case "$cmd" in
     open=$(open_parts "$parent" | paste -sd' ' -)
     if [ -z "$open" ]; then
       if gh api "repos/$R/issues/$parent/sub_issues?per_page=100" | jq -e 'any(.[]; .state_reason == "completed")' >/dev/null; then
-        gh issue comment "$parent" --repo "$R" --body "All parts of this story are closed. Closing it as completed." >/dev/null
+        status "$parent" "All parts are closed. Closing this story as completed." 
         gh issue close "$parent" --repo "$R" --reason completed >/dev/null
         "$0" closed "$parent" completed
       else
-        gh issue comment "$parent" --repo "$R" --body "All parts of this story were cancelled. Closing it as not planned." >/dev/null
+        status "$parent" "All parts were cancelled. Closing this story as not planned." 
         gh issue close "$parent" --repo "$R" --reason "not planned" >/dev/null
         "$0" closed "$parent" not_planned
       fi
@@ -575,8 +644,16 @@ case "$cmd" in
       next="${open%% *}"
       if [ "$(current_state "$next")" = inbox ]; then
         FACTORY_START_APPROVED=1 "$0" start "$next" >/dev/null
-        gh issue comment "$parent" --repo "$R" --body "#$part is done. #$next starts now." >/dev/null
+        status "$parent" "#$part is done. #$next starts now." 
         echo "parent #$parent: #$part done, #$next started"; exit 0
+      fi
+    else
+      # A cancelled part: the next part may no longer make sense. A human decides.
+      next="${open%% *}"
+      if [ "$(current_state "$next")" = inbox ]; then
+        board "$next" Inbox
+        notify "$next" "The previous part #$part was closed without being completed. Reply \`/start\` to plan this part anyway, or \`/cancel\` to drop it."
+        echo "parent #$parent: #$part cancelled, asked about #$next"; exit 0
       fi
     fi
     echo "parent #$parent: #$part closed, open parts: $open"
@@ -586,9 +663,9 @@ case "$cmd" in
     issue="$1"
     for old in $STATE_LABELS; do gh issue edit "$issue" --repo "$R" --remove-label "$old" >/dev/null 2>&1 || true; done
     board "$issue" Inbox
-    gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:reopened -->\n**Story reopened.** It waits in the inbox. Reply \`/start\` to start the breakdown.')" >/dev/null
+    status "$issue" "Reopened. Human: Start story - reply /start to start the breakdown." 
     echo "issue #$issue reopened -> inbox"
     ;;
 
-  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command|closed|reopened|split|child-closed|create-tasks|followups|unblock ..." >&2; exit 2 ;;
+  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command|closed|reopened|split|child-closed|create-tasks|followups|unblock|status|notify ..." >&2; exit 2 ;;
 esac
