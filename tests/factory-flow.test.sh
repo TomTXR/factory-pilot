@@ -19,6 +19,7 @@ if [ "$1" = "api" ]; then
     n="${path##*/}"; f="$FX/issue-$n.json"; [ -f "$f" ] || { [ -f "$FX/issue.json" ] && cp "$FX/issue.json" "$f" || echo '{"labels":[]}' > "$f"; }
     jq --rawfile b "${a#body=@}" '.body = $b' "$f" > "$f.t" && mv "$f.t" "$f" ;; esac; done; echo '{}'; exit 0 ;; esac
   case "$path" in
+    */actions/runs/*/jobs*) cat "$FX/jobs.json" 2>/dev/null || echo '{"jobs":[]}' ;;
     */reactions) case "$*" in *"-X POST"*) echo '{}' ;; *) cat "$FX/reactions.json" 2>/dev/null || echo '[]' ;; esac ;;
     */dependencies/blocked_by*) case "$*" in *"-X POST"*) echo '{}' ;; *) dn=${path%/dependencies*}; dn=${dn##*/}; cat "$FX/blocked_by-$dn.json" 2>/dev/null || echo '[]' ;; esac ;;
     */dependencies/blocking*) dn=${path%/dependencies*}; dn=${dn##*/}; cat "$FX/blocking-$dn.json" 2>/dev/null || echo '[]' ;;
@@ -35,6 +36,7 @@ if [ "$1" = "api" ]; then
     *) echo '{}' ;;
   esac
 fi
+if [ "$1" = "run" ] && [ "$2" = "view" ]; then cat "$FX/run-log.txt" 2>/dev/null; fi
 if [ "$1" = "issue" ] && [ "$2" = "close" ]; then
   # Stateful close: later reads see the issue as closed (as on GitHub).
   n="$3"; r=completed; case "$*" in *"not planned"*) r=not_planned ;; esac
@@ -55,7 +57,7 @@ setup() { # head_ref review_author review_body
   : > "$GH_LOG"
   jq -n --arg ref "$1" '{state:"open", head:{ref:$ref, sha:"sha1"}}' > "$FX/pull.json"
   jq -n --arg u "$2" --arg b "$3" '{user:{login:$u}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"
-  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/bot_issues.json" "$FX"/blocked_by-*.json "$FX"/blocking-*.json "$FX/reactions.json" "$FX/seq" "$FX/next" "$WORK/out"
+  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/bot_issues.json" "$FX"/blocked_by-*.json "$FX"/blocking-*.json "$FX/reactions.json" "$FX/seq" "$FX/next" "$FX/jobs.json" "$FX/run-log.txt" "$WORK/out"
   jq -n '[{number:16, head:{ref:"factory/issue-5"}}, {number:17, head:{ref:"factory/issue-50"}}]' > "$FX/open_pulls.json"
 }
 check() { # name expected(yes|no) pattern
@@ -781,6 +783,48 @@ tcmd '["factory:human-task"]' alice "/done"; : > "$GH_LOG"
 jq '.state = "closed"' "$FX/issue-90.json" > "$FX/t" && mv "$FX/t" "$FX/issue-90.json"
 FACTORY_APPROVERS=alice,bob "$SCRIPT" command 90 901 >/dev/null 2>&1
 check "T9 a comment on a closed task asks to reopen" yes "already closed"
+
+
+# CF. A failed CI run on a factory PR sends it back to the builder (the reviewer skips red heads).
+cifx() { # issue-state mergeable
+  setup factory/issue-5 agentbot x
+  jq -n --arg l "$1" '{node_id:"I_test", labels:[{name:"factory:story"},{name:$l}]}' > "$FX/issue.json"
+  jq -n --argjson m "$2" '{state:"open", mergeable:$m, head:{ref:"factory/issue-5", sha:"sha1"}}' > "$FX/pull.json"
+  jq -n '{jobs:[{name:"checks", conclusion:"success"},{name:"e2e", conclusion:"failure"}]}' > "$FX/jobs.json"
+  printf 'e2e\tUNKNOWN STEP\t2026-11-19T10:52:52.5Z   ✘  12 [desktop] › e2e/tests/auth.spec.ts:74:1 › a failed Google sign-in message shows\ne2e\tUNKNOWN STEP\t2026-11-19T10:53:02.1Z     Error: expect(locator).toContainText(expected) failed\ne2e\tUNKNOWN STEP\t2026-11-19T10:53:02.1Z ##[group]Run actions/upload-artifact@v4\n' > "$FX/run-log.txt"
+}
+cifx factory:agent-review true
+"$SCRIPT" ci-failed 16 777 sha1 >/dev/null 2>&1
+check "CF1 a red CI sends the PR back to the builder" yes "statuses/sha1 -f state=failure"
+check "CF1 the rework comment names the failed job" yes "failed jobs: e2e\)"
+check "CF1 the rework comment carries the failing test" yes "✘  12 \[desktop\] › e2e/tests/auth.spec.ts:74:1"
+check "CF1 the rework comment carries the error line" yes "Error: expect\(locator\)\.toContainText"
+check "CF1 log noise is dropped" no "##\[group\]Run actions/upload-artifact"
+check "CF1 the story moves to rework" yes "add-label factory:rework"
+check "CF1 no conflict note without a conflict" no "conflicts with the current"
+cifx factory:agent-review false
+"$SCRIPT" ci-failed 16 777 sha1 >/dev/null 2>&1
+check "CF2 a conflicting PR is told to merge main" yes "conflicts with the current \`main\`"
+cifx factory:agent-review true
+"$SCRIPT" ci-failed 16 777 oldsha >/dev/null 2>&1
+check "CF3 a run for an older head is ignored" no "pr comment 16"
+cifx factory:agent-review true
+jq -n '[{user:{login:"github-actions[bot]"}, body:"<!-- factory:ci-failed sha1 -->\nx"}]' > "$FX/comments.json"
+"$SCRIPT" ci-failed 16 777 sha1 >/dev/null 2>&1
+check "CF4 the same head is sent back only once" no "pr comment 16"
+cifx factory:human-review true
+"$SCRIPT" ci-failed 16 777 sha1 >/dev/null 2>&1
+check "CF5 no rework outside the build states" no "pr comment 16"
+cifx factory:agent-review true
+jq -n '[range(3) | {user:{login:"github-actions[bot]"}, body:"<!-- factory:rework -->"}]' > "$FX/comments.json"
+"$SCRIPT" ci-failed 16 777 sha1 >/dev/null 2>&1
+check "CF6 red CI counts toward the rework limit" yes "add-label factory:blocked"
+setup factory/issue-5 agentbot x
+jq -n '{state:"open", head:{ref:"feature/x", sha:"sha1"}}' > "$FX/pull.json"
+"$SCRIPT" ci-failed 16 777 sha1 >/dev/null 2>&1
+check "CF7 a non-factory PR is ignored" no "pr comment"
+grep -q "workflows: \[CI\]" "$ROOT/.github/workflows/factory-ci-failed.yml" && grep -q "conclusion == 'failure'" "$ROOT/.github/workflows/factory-ci-failed.yml" \
+  && { pass=$((pass+1)); echo "ok   CF8 workflow listens for failed CI runs"; } || { fail=$((fail+1)); echo "FAIL CF8 workflow trigger"; }
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

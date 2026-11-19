@@ -18,6 +18,7 @@
 # commit status software-factory/review on its head is failure/error. This
 # script sets that status; it never restarts the builder while a PR is open.
 #   factory-flow.sh ready-check <pr>         preview deployed: ready for human?
+#   factory-flow.sh ci-failed <pr> <run> <sha>  CI failed on a factory PR: send it back to the builder
 #   factory-flow.sh plan-ready <issue>       breakdown posted a plan: notify approvers
 #   factory-flow.sh start <issue>            new story: start the breakdown
 #   factory-flow.sh command <issue> <id>     a comment by a human on a story issue (or a human task)
@@ -295,6 +296,33 @@ case "$cmd" in
     gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:rework -->\n**Rework %s of %s.** No open PR; the builder starts again from `main` and reads this thread.\n\n%s' "$((n+1))" "$MAX_REWORK" "$reason")" >/dev/null
     set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
     echo "issue #$issue -> rework $((n+1)), builder re-triggered"
+    ;;
+
+  ci-failed)
+    # CI failed on a factory PR. The reviewer agent skips red heads, so without this
+    # the story would wait in Agent: Reviewing forever. Send the PR back to the builder
+    # with the failing jobs and error lines; it counts as a rework (limit applies).
+    pr="$1"; run="$2"; sha="$3"
+    issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || { echo "not a factory PR"; exit 0; }
+    case "$(current_state "$issue")" in
+      in-progress|agent-review|rework|plan-approved) ;;
+      *) echo "issue #$issue is in state $(current_state "$issue"): CI failure not handled"; exit 0 ;;
+    esac
+    prj=$(gh api "repos/$R/pulls/$pr")
+    [ "$(echo "$prj" | jq -r .state)" = open ] || { echo "PR closed"; exit 0; }
+    head=$(echo "$prj" | jq -r .head.sha)
+    [ "$head" = "$sha" ] || { echo "run $run is for ${sha:0:7}, head is ${head:0:7}: stale"; exit 0; }
+    marker="<!-- factory:ci-failed $sha -->"
+    if bot_comments "$pr" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "CI failure of ${sha:0:7} already sent back"; exit 0; fi
+    jobs=$(gh api "repos/$R/actions/runs/$run/jobs?per_page=100" | jq -r '[.jobs[]? | select(.conclusion == "failure") | .name] | join(", ")')
+    errors=$(gh run view "$run" --repo "$R" --log-failed 2>/dev/null \
+      | sed -E 's/^[^\t]*\t[^\t]*\t[0-9TZ:.-]+ ?//' \
+      | grep -E '✘|Error|error TS|FAIL|failed|expect|Expected|Received|^ *> *[0-9]+ \|' | grep -v '##\[' | awk '!seen[$0]++' | head -40 || true)
+    conflict=""
+    [ "$(echo "$prj" | jq -r '.mergeable')" = false ] && conflict=$'\n\nThe PR also conflicts with the current `main`: merge `main` into this branch and resolve the conflicts so that the features on `main` and this story both work.'
+    reason=$(printf '%s\nCI failed on head %s (run https://github.com/%s/actions/runs/%s, failed jobs: %s). Fix the cause so that all checks pass; do not weaken or skip the failing tests unless they test the wrong thing.%s\n\n```\n%s\n```' \
+      "$marker" "${sha:0:7}" "$R" "$run" "${jobs:-unknown}" "$conflict" "${errors:-(no error lines found; open the run)}")
+    "$0" rework "$issue" "$reason"
     ;;
 
   ready-check)
