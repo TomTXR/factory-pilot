@@ -46,7 +46,7 @@ test('sign-out of A then sign-in of B on the same page shows no trace of A', asy
   const { id } = (await created.json()) as { id: string };
   try {
     await page.goto('/');
-    await expect(page.getByText('Sporenstraat 9').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sporenstraat 9' })).toBeVisible();
     await page.getByRole('button', { name: 'Sign out' }).click();
     await expect(page.getByRole('button', { name: 'Test sign-in' })).toBeVisible();
 
