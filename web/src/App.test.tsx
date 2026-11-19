@@ -81,6 +81,36 @@ describe('App', () => {
     expect(await screen.findByText('API: ok')).toBeInTheDocument();
   });
 
+  it('shows who is signed in and signs out on request', async () => {
+    const onSignOut = vi.fn();
+    render(
+      <App
+        loadHealth={ok}
+        api={fakeApi()}
+        user={{ id: 'u1', email: 'a@example.com', name: 'Anna Test' }}
+        onSignOut={onSignOut}
+      />,
+    );
+    expect(screen.getByText('Anna Test')).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(onSignOut).toHaveBeenCalledOnce();
+  });
+
+  it('has no sign-out control without a user', () => {
+    render(<App loadHealth={ok} api={fakeApi()} />);
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
+  });
+
+  it('reports a 401 from the API instead of showing an error', async () => {
+    const onUnauthorized = vi.fn();
+    const api = fakeApi();
+    api.list = vi.fn(async () => {
+      throw new ApiError('You are not signed in.', 401);
+    });
+    render(<App loadHealth={ok} api={api} onUnauthorized={onUnauthorized} />);
+    await vi.waitFor(() => expect(onUnauthorized).toHaveBeenCalledOnce());
+  });
+
   it('shows the version in the footer', async () => {
     render(<App loadHealth={ok} loadVersion={async () => '1.2.3'} api={fakeApi()} />);
     expect(await screen.findByText('Version 1.2.3')).toBeInTheDocument();

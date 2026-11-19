@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  expect((await page.request.post('/api/auth/test-login')).ok()).toBe(true);
+});
+
 test('home page shows title and a healthy API', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home Maintenance Log' })).toBeVisible();

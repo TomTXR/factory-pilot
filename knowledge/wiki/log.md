@@ -36,3 +36,7 @@ Append-only. Newest entries at the bottom.
 ## [2026-11-19] ingest | Factory Spike Lessons
 - Raw: raw/lessons/2026-11-19-board-column-names.md
 - Updated: Story Workflow
+
+## [2026-11-19] ingest | Home Maintenance Log
+- Raw: raw/stories/2026-11-19-story-34-google-sign-in.md
+- Updated: Home Owner Persona
