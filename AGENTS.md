@@ -58,6 +58,8 @@ All of `lint`, `typecheck`, `test` and `e2e` must pass before a PR is ready. CI 
 8. UI must work on a 390 px wide mobile screen and on desktop.
 9. Commit messages: imperative mood, concise, describe what and why. No tool or AI attribution lines.
 10. Never commit secrets. Configuration comes from environment variables.
+11. App secrets (API keys, OAuth clients) are repository secrets named `PILOT_<NAME>`. Production gets them through the deploy; previews, CI and local runs do not. Map them in `docker-compose.yml` (for example `GOOGLE_CLIENT_ID: ${PILOT_GOOGLE_CLIENT_ID:-}`). The app must work without them where possible (test path, clearly labelled) and otherwise fail with a clear log line, never run unprotected.
+12. Work only a human can do (accounts, external consoles, credentials) is a human task of the story, a sub-issue labelled `factory:human-task`. Never ask for secret values in issues, comments or pull requests. If you find a missing human task while building, describe it under "Human tasks needed" in the pull request description.
 11. If the ticket is unclear, ask in the issue instead of guessing.
 
 ## Pull requests
@@ -77,5 +79,6 @@ Reviewers (human or agent) check, in this order:
 4. **Security:** no secrets in code, no SQL built by string concatenation (use the tagged `sql` template), no unvalidated user input in queries or HTML.
 5. **Rules above:** logger instead of console, no emojis, strict types, mobile layout.
 6. **Knowledge:** behaviour that contradicts `knowledge/wiki/` is a P1 unless the issue explicitly changes it; then the wiki must be updated in the same PR.
+7. **Human tasks:** a new required secret or external setup that no human task of the story covers is a P1 (name it in the review so the human can add it). A secret value in code, a comment or a PR is a P0.
 
 Report only real problems, ranked P0 (must fix: bug, data loss, security) and P1 (should fix: missing test, rule violation). Do not report style preferences.

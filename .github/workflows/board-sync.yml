@@ -5,7 +5,7 @@ name: Board sync
 # Labels are the source of truth; the board is a view.
 on:
   issues:
-    types: [opened, reopened, labeled]
+    types: [opened, reopened, labeled, closed]
 
 permissions:
   contents: read
@@ -27,6 +27,7 @@ jobs:
         env:
           LABEL: ${{ github.event.label.name }}
           ACTION: ${{ github.event.action }}
+          IS_TASK: ${{ contains(github.event.issue.labels.*.name, 'factory:human-task') }}
         run: |
           case "$LABEL" in
             factory:story) s="Inbox" ;;
@@ -40,10 +41,15 @@ jobs:
             factory:done) s="Done" ;;
             factory:blocked) s="Blocked" ;;
             factory:split) s="Split" ;;
+            factory:human-task) s="Human Task" ;;
             factory:cancelled) s="Cancelled" ;;
             *) s="" ;;
           esac
-          if [ "$ACTION" != "labeled" ]; then s="${s:-Inbox}"; fi
+          if [ "$ACTION" = "closed" ]; then
+            # Stories are handled by factory-flow; a closed human task is done.
+            s=""; [ "$IS_TASK" = "true" ] && s="Done"
+          elif [ "$ACTION" = "reopened" ] && [ "$IS_TASK" = "true" ]; then s="Human Task"
+          elif [ "$ACTION" != "labeled" ]; then s="${s:-Inbox}"; fi
           echo "status=$s" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v5

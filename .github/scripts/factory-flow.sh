@@ -26,6 +26,10 @@
 #   factory-flow.sh split <issue> <approver> approved plan proposes a split: create the parts
 #   factory-flow.sh child-closed <issue>     a part of a split story was closed: start the next
 #                                            part, or close the parent when all parts are closed
+#   factory-flow.sh create-tasks <issue> <assignee>  approved plan lists human tasks: create them
+#
+# Human tasks (accounts, external consoles, credentials) are sub-issues labelled
+# factory:human-task, assigned to the approver. A release needs all of them closed.
 #
 # Humans steer only with comments: /approve, /changes <text>, /retry, or plain
 # text whose intent classify-intent.sh infers at the two gates. Production
@@ -78,19 +82,27 @@ plan_body() { # issue -> body of the latest plan comment by an agent
     | tr -d '\r'
 }
 plan_questions() { plan_body "$1" | sed -n '/^## Open questions/,$p'; }
-split_parts() { # issue dir -> writes dir/<k>.title and dir/<k>.body per proposed story; prints the count
-  # Only a "## Proposed split" section with the split marker counts, and only with 2 or more stories.
-  plan_body "$1" | awk -v d="$2" '
-    /^## Proposed split/ { insec = 1; next }
+plan_blocks() { # issue dir section marker word -> dir/<k>.title, dir/<k>.body per "### <word> <k>: <title>"; prints the count
+  # Only a "## <section>" with its marker line counts.
+  plan_body "$1" | awk -v d="$2" -v sec="## $3" -v mk="$4" -v bw="### $5 " '
+    index($0, sec) == 1 { insec = 1; next }
     insec && /^## / { insec = 0 }
     !insec { next }
-    /^<!-- factory:split -->/ { marked = 1; next }
-    /^### Story [0-9]+:/ { k++; t = $0; sub(/^### Story [0-9]+:[ \t]*/, "", t); print t > (d "/" k ".title"); next }
+    index($0, mk) == 1 { marked = 1; next }
+    index($0, bw) == 1 && $0 ~ /^### [A-Za-z]+ [0-9]+:/ { k++; t = $0; sub(/^### [A-Za-z]+ [0-9]+:[ \t]*/, "", t); print t > (d "/" k ".title"); next }
     k { print > (d "/" k ".body") }
-    END { print ((marked && k >= 2) ? k : 0) }'
+    END { print (marked ? k + 0 : 0) }'
 }
-open_parts() { # parent issue -> open sub-issue numbers, in order
-  gh api "repos/$R/issues/$1/sub_issues?per_page=100" | jq -r '.[] | select(.state == "open") | .number'
+split_parts() { # issue dir -> proposed stories of the plan; a split needs 2 or more
+  local n; n=$(plan_blocks "$1" "$2" "Proposed split" "<!-- factory:split -->" Story)
+  [ "$n" -ge 2 ] && echo "$n" || echo 0
+}
+plan_tasks() { plan_blocks "$1" "$2" "Human tasks" "<!-- factory:human-tasks -->" Task; }
+open_parts() { # parent issue -> open sub-issue numbers that are stories (not human tasks), in order
+  gh api "repos/$R/issues/$1/sub_issues?per_page=100" | jq -r '.[] | select(.state == "open" and (([.labels[]?.name] | index("factory:human-task")) | not)) | .number'
+}
+open_tasks() { # story -> open human-task sub-issue numbers
+  gh api "repos/$R/issues/$1/sub_issues?per_page=100" | jq -r '.[] | select(.state == "open" and ([.labels[]?.name] | index("factory:human-task"))) | .number'
 }
 ack() { # issue comment-id text: one bot reply per human comment
   gh issue comment "$1" --repo "$R" --body "$(printf '<!-- factory:ack %s -->\n%s' "$2" "$3")" >/dev/null
@@ -190,7 +202,9 @@ case "$cmd" in
     marker="<!-- factory:test-request $head -->"
     if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "test request already posted"; exit 0; fi
     set_state "$issue" factory:human-review; board "$issue" "Human Review"
-    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n## Test request\n\nThe change for this story is ready for your review.\n\n- **Test version:** https://%s\n- **Pull request:** #%s (commit %s), CI green, reviewer agent approved\n\nPlease check the acceptance criteria of this issue on the test version (also on your phone). Then reply with a comment:\n\n- describe what must change (or `/changes <what>`): the builder revises the pull request, or\n- `/approve` to merge and deploy to production. A release always needs the explicit `/approve`.' "$marker" "$host" "$pr" "${head:0:7}")" >/dev/null
+    tasks=$(open_tasks "$issue" | sed 's/^/#/' | paste -sd' ' -)
+    [ -n "$tasks" ] && tasks="- **Open human tasks:** $tasks (close them when done; the release waits for them)"$'\n'
+    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n## Test request\n\nThe change for this story is ready for your review.\n\n- **Test version:** https://%s\n- **Pull request:** #%s (commit %s), CI green, reviewer agent approved\n%s\nPlease check the acceptance criteria of this issue on the test version (also on your phone). Then reply with a comment:\n\n- describe what must change (or `/changes <what>`): the builder revises the pull request, or\n- `/approve` to merge and deploy to production. A release always needs the explicit `/approve`.' "$marker" "$host" "$pr" "${head:0:7}" "$tasks")" >/dev/null
     echo "issue #$issue -> human review"
     ;;
 
@@ -271,14 +285,23 @@ case "$cmd" in
           "$0" split "$issue" "$author"
           ack "$issue" "$cid" "${read_as}**Plan approved with split** by @$author. The story is split into $parts stories (see above)."
         else
+          tasks_note=""
+          dir=$(mktemp -d); ntasks=$(plan_tasks "$issue" "$dir"); rm -rf "$dir"
+          if [ "$ntasks" -ge 1 ]; then
+            "$0" create-tasks "$issue" "$author"
+            tasks_note=" $ntasks human task(s) were created and assigned to you (see above); the release waits for them."
+          fi
           set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
-          ack "$issue" "$cid" "${read_as}**Plan approved** by @$author. The builder starts within about 5 minutes."
+          ack "$issue" "$cid" "${read_as}**Plan approved** by @$author. The builder starts within about 5 minutes.$tasks_note"
         fi ;;
       plan-review:changes)
         set_state "$issue" factory:breakdown; board "$issue" Breakdown
         ack "$issue" "$cid" "${read_as}**Plan changes requested** by @$author. The breakdown agent writes a refined plan that includes your comment, within about 5 minutes." ;;
       human-review:approve)
-        if [ "$explicit" = yes ]; then
+        tasks=$(open_tasks "$issue" | sed 's/^/#/' | paste -sd' ' -)
+        if [ "$explicit" = yes ] && [ -n "$tasks" ]; then
+          ack "$issue" "$cid" "**Release on hold.** These human tasks are still open: $tasks. Close each one when it is done, then reply \`/approve\` again."
+        elif [ "$explicit" = yes ]; then
           set_state "$issue" factory:approved-for-production; board "$issue" Deploying
           ack "$issue" "$cid" "**Release approved** by @$author. Merging and deploying to production; this issue moves to Done after the smoke check."
           emit land=true
@@ -337,6 +360,9 @@ case "$cmd" in
         done
         set_state "$issue" factory:cancelled; board "$issue" Cancelled
         echo "issue #$issue -> cancelled (closed PRs: ${prs:-none})"
+        for task in $(open_tasks "$issue"); do
+          gh issue close "$task" --repo "$R" --reason "not planned" --comment "Closed: story #$issue was cancelled." >/dev/null
+        done
         if [ "$state" = split ]; then
           # A cancelled split story cancels its open parts (closing by GITHUB_TOKEN triggers no event).
           for part in $(open_parts "$issue"); do
@@ -387,6 +413,33 @@ case "$cmd" in
     echo "issue #$issue -> split into $n stories, #$first started"
     ;;
 
+  create-tasks)
+    # Runs only after an approver approved a plan with a "Human tasks" section.
+    issue="$1"; assignee="$2"
+    plan_id=$(gh api "repos/$R/issues/$issue/comments" --paginate | jq -rs --arg agents ",$AGENTS," \
+      '[.[][] | (.user.login | ascii_downcase) as $u | select(($agents | ascii_downcase | contains("," + $u + ",")) and (.body | startswith("<!-- factory:breakdown -->")))] | last | .id // empty')
+    marker="<!-- factory:tasks-created $plan_id -->"
+    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "tasks of plan $plan_id already created"; exit 0; fi
+    dir=$(mktemp -d); n=$(plan_tasks "$issue" "$dir"); list=""
+    for k in $(seq 1 "$n"); do
+      title=$(head -1 "$dir/$k.title")
+      {
+        printf '<!-- factory:human-task-of %s -->\n' "$issue"
+        printf '_Needed by #%s. Only a human can do this. Close this issue when it is done; the release of #%s waits for it._\n\n' "$issue" "$issue"
+        cat "$dir/$k.body" 2>/dev/null || true
+        printf '\n\n**Never post secret values in issues or comments** (this repository is public). Store them as repository secrets: Settings, Secrets and variables, Actions.\n'
+      } > "$dir/$k.issue"
+      created=$(gh api -X POST "repos/$R/issues" -f title="Human task: $title" -F body=@"$dir/$k.issue" -f 'labels[]=factory:human-task' -f "assignees[]=$assignee")
+      num=$(echo "$created" | jq -r .number); id=$(echo "$created" | jq -r .id)
+      gh api -X POST "repos/$R/issues/$issue/sub_issues" -F sub_issue_id="$id" >/dev/null || echo "::warning::could not link #$num as sub-issue of #$issue"
+      board "$num" "Human Task"
+      list="$list"$'\n'"- #$num $title"
+    done
+    rm -rf "$dir"
+    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Human tasks** for @%s (only a human can do these):\n%s\n\nThe build starts now. The release to production waits until all tasks are closed.' "$marker" "$assignee" "$list")" >/dev/null
+    echo "issue #$issue: $n human task(s) created"
+    ;;
+
   child-closed)
     # Parts are created by this automation and carry the parent marker in line 1.
     part="$1"
@@ -428,5 +481,5 @@ case "$cmd" in
     echo "issue #$issue reopened -> inbox"
     ;;
 
-  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command|closed|reopened|split|child-closed ..." >&2; exit 2 ;;
+  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command|closed|reopened|split|child-closed|create-tasks ..." >&2; exit 2 ;;
 esac

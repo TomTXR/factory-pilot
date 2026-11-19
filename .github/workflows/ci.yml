@@ -28,7 +28,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - name: Factory flow script tests
-        run: bash tests/factory-flow.test.sh
+        run: bash tests/factory-flow.test.sh && bash tests/pilot-deploy-env.test.sh
 
   e2e:
     needs: checks
