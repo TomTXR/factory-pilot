@@ -20,7 +20,9 @@
 #   factory-flow.sh ready-check <pr>         preview deployed: ready for human?
 #   factory-flow.sh plan-ready <issue>       breakdown posted a plan: notify approvers
 #   factory-flow.sh start <issue>            new story: start the breakdown
-#   factory-flow.sh command <issue> <id>     a comment by a human on a story issue
+#   factory-flow.sh command <issue> <id>     a comment by a human on a story issue (or a human task)
+#   factory-flow.sh task-comment <issue> <id>  an approver commented on a human task: done -> close,
+#                                            question -> answer-task.sh answers, or the task is blocked
 #   factory-flow.sh closed <issue> <reason>  issue closed (completed | not_planned | duplicate)
 #   factory-flow.sh reopened <issue>         issue reopened
 #   factory-flow.sh split <issue> <approver> approved plan proposes a split: create the parts
@@ -44,6 +46,9 @@
 #
 # Human tasks (accounts, external consoles, credentials) are sub-issues labelled
 # factory:human-task, assigned to the approver. A release needs all of them closed.
+# The assignee closes a task by hand or with a comment ("/done", "all done"). A
+# question on a task gets an agent answer; if the agent cannot answer, the task
+# is labelled factory:blocked and the other approvers are asked to decide.
 #
 # Humans steer only with comments: /approve, /changes <text>, /retry, /cancel,
 # /followup <what> (create a follow-up ticket, any state), or plain
@@ -374,6 +379,10 @@ case "$cmd" in
     if ! is_approver "$author" || [ "$(echo "$c" | jq -r .user.type)" != "User" ]; then echo "ignored: $author is not an approver"; exit 0; fi
     if handled "$cid" "$issue"; then echo "already handled"; exit 0; fi
     ACK_TO="$author"
+    tj=$(gh api "repos/$R/issues/$issue")
+    if echo "$tj" | jq -e '[.labels[].name] | index("factory:human-task")' >/dev/null; then
+      "$0" task-comment "$issue" "$cid"; exit 0
+    fi
     state=$(current_state "$issue")
     cmd_line=$(printf '%s\n' "$body" | grep -ioE '^[[:space:]]*/(approve|changes|retry|start|cancel)\b' | head -1 | tr -d '[:space:]' | tr 'A-Z' 'a-z' || true)
     explicit=yes; intent=""; summary=""; followup=no
@@ -491,6 +500,95 @@ case "$cmd" in
       *)
         if [ "$explicit" = yes ]; then
           ask "$issue" "$cid" "\`$cmd_line\` has no effect in the current state (**$state**). Commands apply at Plan Review and Human Review; \`/retry\` applies when a story is blocked."
+        fi ;;
+    esac
+    ;;
+
+  task-comment)
+    # An approver commented on a human task. Only humans can do the task, so the
+    # comment either reports it done (close it), or asks for help: the answer agent
+    # replies from the plan and the wiki, and when it cannot, the task is blocked
+    # and the other approvers are asked to decide.
+    issue="$1"; cid="$2"
+    c=$(gh api "repos/$R/issues/comments/$cid")
+    author=$(echo "$c" | jq -r .user.login); body=$(echo "$c" | jq -r .body); ACK_TO="$author"
+    tj=$(gh api "repos/$R/issues/$issue")
+    parent=$(echo "$tj" | jq -r '(.parent_issue_url // "") | split("/") | last')
+    if [ "$(echo "$tj" | jq -r .state)" = closed ]; then
+      ask "$issue" "$cid" "This task is already closed. Reopen it if it needs more work, then comment again."; exit 0
+    fi
+    tcmd=$(printf '%s\n' "$body" | grep -oE '^[[:space:]]*/[A-Za-z]+' | head -1 | tr -d '[:space:]' | tr 'A-Z' 'a-z' || true)
+    read_as=""
+    case "$tcmd" in
+      /done) intent=done ;;
+      "")
+        tmp=$(mktemp); printf '%s' "$body" > "$tmp"
+        res=$("$here/classify-intent.sh" human-task "$tmp"); rm -f "$tmp"
+        intent=$(echo "$res" | jq -r .intent); read_as="Read as: $intent - $(echo "$res" | jq -r .summary). "
+        echo "task #$issue: inferred $intent" ;;
+      *)
+        ask "$issue" "$cid" "\`$tcmd\` does not apply to a human task. Reply \`/done\` (or write that it is done) when the task is finished, or write your question."; exit 0 ;;
+    esac
+    case "$intent" in
+      done)
+        ack "$issue" "$cid" "${read_as}Task done, reported by $author. Closed."
+        gh issue close "$issue" --repo "$R" --reason completed >/dev/null
+        gh issue edit "$issue" --repo "$R" --remove-label factory:blocked >/dev/null 2>&1 || true
+        board "$issue" Done
+        if [ -n "$parent" ]; then
+          left=$(open_tasks "$parent" | sed 's/^/#/' | paste -sd' ' -)
+          status "$parent" "Human task #$issue done ($author). Open human tasks: ${left:-none}."
+        fi
+        # Closing by GITHUB_TOKEN triggers no event: release what this task blocked here.
+        "$0" unblock "$issue"
+        echo "task #$issue -> done" ;;
+      other)
+        ack "$issue" "$cid" "${read_as}Comment noted. No action." ;;
+      *)
+        # question, or unclear (classifier failed): a human asked for help.
+        d=$(mktemp -d)
+        echo "$tj" | jq -r '"# " + .title + "\n\n" + (.body // "")' > "$d/task"
+        : > "$d/story"; : > "$d/plan"
+        if [ -n "$parent" ]; then
+          # The story body only when an approver or this automation wrote it (anyone can open a story).
+          pj=$(gh api "repos/$R/issues/$parent"); pa=$(echo "$pj" | jq -r .user.login)
+          if is_approver "$pa" || [ "$pa" = "$BOT" ]; then
+            echo "$pj" | jq -r '"# #" + (.number|tostring) + " " + .title + "\n\n" + (.body // "")' > "$d/story"
+          else
+            echo "$pj" | jq -r '"# #" + (.number|tostring) + " " + .title + "\n\n(story text omitted: written by a non-approver)"' > "$d/story"
+          fi
+          plan_body "$parent" > "$d/plan"
+        fi
+        # Thread: approvers and this automation only (public repository: anyone can comment).
+        gh api "repos/$R/issues/$issue/comments" --paginate | jq -c '.[]' | while read -r cm; do
+          u=$(echo "$cm" | jq -r .user.login)
+          { is_approver "$u" || [ "$u" = "$BOT" ]; } && echo "$cm" | jq -r '"### " + .user.login + "\n" + .body + "\n"'
+        done > "$d/thread" || true
+        res=$("$here/answer-task.sh" "$d/task" "$d/story" "$d/plan" "$d/thread" 2>/dev/null) || true
+        echo "$res" | jq -e 'type == "object"' >/dev/null 2>&1 || res='{"answered":false,"reason":"the answer agent failed"}'
+        # Last line of defence: never post anything that looks like a token.
+        if echo "$res" | jq -r '.answer // ""' | grep -qE '(gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|GOCSPX-[A-Za-z0-9_-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY)'; then
+          echo "::warning::answer for task #$issue looked like it contained a credential; not posted"
+          res='{"answered":false,"reason":"the answer was withheld because it looked like it contained a credential"}'
+        fi
+        rm -rf "$d"
+        if [ "$(echo "$res" | jq -r '.answered // false')" = true ]; then
+          if echo "$tj" | jq -e '[.labels[].name] | index("factory:blocked")' >/dev/null; then
+            gh issue edit "$issue" --repo "$R" --remove-label factory:blocked >/dev/null 2>&1 || true
+            board "$issue" "Human Task"
+          fi
+          ask "$issue" "$cid" "$(printf '%s\n\n---\n_Answered by an agent from the task, the plan and the wiki; it cannot do the task. Reply `/done` (or write that it is done) when the task is finished, or ask again._' "$(echo "$res" | jq -r .answer)")"
+          echo "task #$issue: answered"
+        else
+          reason=$(echo "$res" | jq -r '.reason // "no answer"')
+          gh issue edit "$issue" --repo "$R" --add-label factory:blocked >/dev/null
+          board "$issue" Blocked
+          react "$cid" eyes
+          others=$(echo "${FACTORY_APPROVERS:-}" | tr ',' '\n' | sed '/^$/d' | grep -vix -- "$author" | sed 's/^/@/' | paste -sd' ' - || true)
+          who="${others:-@$author}"
+          story_ref=""; [ -n "$parent" ] && story_ref=" or cancel story #$parent with \`/cancel\` there"
+          gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:ack %s -->\n%s The agent cannot answer the question of %s on this task (%s). A human must decide: answer here, change the task%s. Reply `/done` when the task is finished.' "$cid" "$who" "$author" "$reason" "$story_ref")" >/dev/null
+          echo "task #$issue: blocked, asked $who"
         fi ;;
     esac
     ;;
