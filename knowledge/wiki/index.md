@@ -32,8 +32,8 @@ How work moves through the software factory.
 
 | Article | Summary | Updated |
 |---------|---------|---------|
-| [Story Workflow](process/story-workflow.md) | Stages, human commands at the two gates, cancel, story split into sub-issues, human tasks, task comments and app secrets, follow-up stories, dependencies, quiet notifications, story owners | 2026-11-19 |
-| [Factory Self-Hosting](process/factory-self-hosting.md) | Idea, not decided: the factory develops itself; why it fits, safeguards (lockout, rights, testing, watchdog), a software factory hub as the central entry point, suggested order | 2026-11-19 |
+| [Story Workflow](process/story-workflow.md) | Stages, human commands at the two gates, cancel, story split into sub-issues, human tasks, task comments and app secrets, follow-up stories, dependencies, quiet notifications, story owners, release, stalls and the watchdog | 2026-11-19 |
+| [Factory Self-Hosting](process/factory-self-hosting.md) | Idea, not decided: the factory develops itself; why it fits, safeguards (lockout, rights, testing, watchdog), a software factory hub as the central entry point, publishing the learnings as a guide, suggested order | 2026-11-19 |
 
 ## lessons
 
@@ -41,4 +41,4 @@ What the project learned and why its rules exist.
 
 | Article | Summary | Updated |
 |---------|---------|---------|
-| [Factory Spike Lessons](lessons/factory-spike-lessons.md) | Tweaks from running real stories through the factory: comment control, split, human tasks, secrets, follow-ups, dependencies, plan review, GitHub specifics | 2026-11-19 |
+| [Factory Spike Lessons](lessons/factory-spike-lessons.md) | Tweaks from running real stories through the factory: comment control, split, human tasks, secrets, follow-ups, dependencies, plan review, silent stalls, GitHub specifics | 2026-11-19 |

@@ -1,7 +1,7 @@
 # Factory Spike Lessons
 
 > Sources: Spike 0 log and decisions, 2026-11-17 to 2026-11-19; product owner decisions on stories #25, #28, #32
-> Raw: [Plan criterion for non-existing data](../../raw/lessons/2026-11-19-plan-criteria-for-nonexistent-data.md); [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
+> Raw: [Release branch update](../../raw/process/2026-11-19-release-branch-update.md); [Silent stalls and the watchdog](../../raw/process/2026-11-19-silent-stalls-watchdog.md); [Plan criterion for non-existing data](../../raw/lessons/2026-11-19-plan-criteria-for-nonexistent-data.md); [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -36,6 +36,15 @@ Running real stories through the factory showed where the first design broke. Ea
 | Problem seen | Change |
 |--------------|--------|
 | #35's plan claimed unowned properties for the first account to sign in, although production had none. The rule collided with per-account uniqueness and 30-day sessions: 2 reworks, each fix revealing the next edge case (P0 lockout, P1 data exposure) | Criterion dropped by `/changes`. At plan review, reject criteria for scenarios that cannot occur; list them under Out of scope. When review findings keep hitting the same rule, the rule is wrong, not the code: send the story back to the human (not built yet) |
+
+## Silent stalls
+
+| Problem seen | Change |
+|--------------|--------|
+| The reviewer skipped a red PR (#34), the release waited for held CI (#35), the builder refused without telling anyone (#46). Each time the human noticed, after 30 minutes to 2.5 hours | A watchdog blocks agent steps that make no progress within their limit and tells the owner. General rule: every waiting loop needs a timeout with a stated reason, and every agent that stops says why |
+| The release updated a PR as the workflow token; GitHub held its CI like an outside contributor's (#35) | Do what a human would: update as the machine account (a collaborator). Ask "would a human have had this problem?" before building machinery: here it led to a fix with standard flows instead of a custom merge queue |
+| A plan named a dependency and asked the human to set it in the GitHub UI (#46) | Plans list dependencies in a section the factory executes. Plans never ask for manual GitHub changes |
+| A fix wrote a mark through a subcommand that dropped the argument; the test checked only the workflow text (PR #51) | Test the effect, not the wiring |
 
 ## Agents and quality
 
