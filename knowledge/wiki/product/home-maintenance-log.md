@@ -41,3 +41,4 @@ Accounts and login, reminders, document uploads, sharing with tenants or contrac
 
 - [GO value categories](../domain/go-categories.md)
 - [Home owner persona](../users/home-owner.md)
+- [Story workflow](../process/story-workflow.md)

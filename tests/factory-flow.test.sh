@@ -11,17 +11,27 @@ cat > "$WORK/bin/gh" <<'STUB'
 # Stub: log the call, answer API reads from fixture files.
 echo "$*" >> "$GH_LOG"
 if [ "$1" = "api" ]; then
-  path="$2"
+  path=""; for a in "$@"; do case "$a" in repos/*) path="$a"; break ;; esac; done
   case "$path" in
+    */sub_issues*) case "$*" in *"-X POST"*) echo '{}' ;; *) pn=${path%/sub_issues*}; pn=${pn##*/}; cat "$FX/sub_issues-$pn.json" 2>/dev/null || cat "$FX/sub_issues.json" 2>/dev/null || echo '[]' ;; esac ;;
+    */issues) n=$(( $(cat "$FX/next" 2>/dev/null || echo 100) )); echo $((n+1)) > "$FX/next"; echo "{\"number\":$n,\"id\":$((n*1000))}" ;;
     */pulls/*/reviews/*) cat "$FX/review.json" ;;
     */pulls/*/reviews) cat "$FX/reviews.json" ;;
     */pulls\?*) cat "$FX/open_pulls.json" ;;
     */pulls/*) cat "$FX/pull.json" ;;
     */issues/comments/*) cat "$FX/comment.json" ;;
     */issues/*/comments) cat "$FX/comments.json" ;;
-    */issues/*) if [ -f "$FX/issue.json" ]; then cat "$FX/issue.json"; else echo '{"node_id":"I_test","labels":[]}'; fi ;;
+    */issues/*) if [ -f "$FX/issue-${path##*/}.json" ]; then cat "$FX/issue-${path##*/}.json"; elif [ -f "$FX/issue.json" ]; then cat "$FX/issue.json"; else echo '{"node_id":"I_test","labels":[]}'; fi ;;
     *) echo '{}' ;;
   esac
+fi
+if [ "$1" = "issue" ] && [ "$2" = "close" ]; then
+  # Stateful close: later reads see the issue as closed (as on GitHub).
+  n="$3"; r=completed; case "$*" in *"not planned"*) r=not_planned ;; esac
+  f="$FX/issue-$n.json"; [ -f "$f" ] && jq --arg r "$r" '.state = "closed" | .state_reason = $r' "$f" > "$f.t" && mv "$f.t" "$f"
+  for sf in "$FX"/sub_issues*.json; do
+    [ -f "$sf" ] && jq --argjson n "$n" --arg r "$r" 'map(if .number == $n then .state = "closed" | .state_reason = $r else . end)' "$sf" > "$FX/s.t" && mv "$FX/s.t" "$sf"
+  done
 fi
 exit 0
 STUB
@@ -35,7 +45,7 @@ setup() { # head_ref review_author review_body
   : > "$GH_LOG"
   jq -n --arg ref "$1" '{state:"open", head:{ref:$ref, sha:"sha1"}}' > "$FX/pull.json"
   jq -n --arg u "$2" --arg b "$3" '{user:{login:$u}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"
-  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX/issue.json" "$FX/comment.json" "$WORK/out"
+  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/next" "$WORK/out"
   jq -n '[{number:16, head:{ref:"factory/issue-5"}}, {number:17, head:{ref:"factory/issue-50"}}]' > "$FX/open_pulls.json"
 }
 check() { # name expected(yes|no) pattern
@@ -273,6 +283,100 @@ PREVIEW_HEALTH_CMD=true "$SCRIPT" ready-check 16 >/dev/null
 jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan"}]' > "$FX/comments.json"
 FACTORY_APPROVERS=alice "$SCRIPT" plan-ready 5 >/dev/null
 check "X10 no transitions on a cancelled story" no "issue (edit|comment)|statuses"
+
+
+# P. Story split: an approved plan with a "Proposed split" creates the parts as sub-issues.
+SPLIT_PLAN='<!-- factory:breakdown -->
+## Summary
+Big story.
+## Proposed split
+<!-- factory:split -->
+### Story 1: Sign in with Google
+#### Story
+As a user I sign in.
+#### Acceptance criteria
+1. Login screen.
+### Story 2: Own data per account
+#### Story
+As a user I see only my data.
+## Open questions
+None'
+splitfx() { # plan body -> comments fixture with one agent plan
+  jq -n --arg b "$1" '[{id:12, user:{login:"agentbot"}, body:$b}]' > "$FX/comments.json"
+}
+setup factory/issue-5 agentbot x; splitfx "$SPLIT_PLAN"
+FACTORY_APPROVERS=alice "$SCRIPT" plan-ready 5 >/dev/null
+check "P1 plan-ready announces the split" yes "split this story into the 2 proposed stories"
+
+setup factory/issue-5 agentbot x; splitfx "$SPLIT_PLAN"
+jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "P2 creates part 1" yes "api -X POST repos/owner/repo/issues -f title=Sign in with Google"
+check "P2 creates part 2" yes "api -X POST repos/owner/repo/issues -f title=Own data per account"
+check "P2 links parts as sub-issues" yes "issues/5/sub_issues -F sub_issue_id=100000"
+check "P2 parent -> split" yes "issue edit 5 .*--add-label factory:split"
+check "P2 parent is not sent to the builder" no "add-label factory:plan-approved"
+check "P2 first part starts its breakdown" yes "issue edit 100 .*--add-label factory:breakdown"
+check "P2 second part waits" no "issue edit 101 .*--add-label factory:breakdown"
+check "P2 ack" yes "Plan approved with split"
+
+setup factory/issue-5 agentbot x; splitfx "${SPLIT_PLAN/<!-- factory:split -->/}"
+jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "P3 split section without marker: no parts" no "api -X POST repos/owner/repo/issues "
+check "P3 split section without marker: normal approval" yes "add-label factory:plan-approved"
+
+partfx() { # part-number state_reason
+  jq -n --arg r "$2" '{node_id:"I_p", state:"closed", state_reason:$r, user:{login:"github-actions[bot]"}, body:"<!-- factory:child-of 5 -->\n_Part_", labels:[{name:"factory:story"}]}' > "$FX/issue-$1.json"
+  jq -n '{node_id:"I_5", state:"open", labels:[{name:"factory:story"},{name:"factory:split"}]}' > "$FX/issue-5.json"
+}
+setup factory/issue-5 agentbot x; partfx 100 completed
+jq -n '{node_id:"I_n", user:{login:"github-actions[bot]"}, labels:[{name:"factory:story"}]}' > "$FX/issue-101.json"
+jq -n '[{number:100, state:"closed", state_reason:"completed"}, {number:101, state:"open"}]' > "$FX/sub_issues.json"
+"$SCRIPT" child-closed 100 >/dev/null
+check "P4 done part starts the next part" yes "issue edit 101 .*--add-label factory:breakdown"
+check "P4 parent stays open" no "issue close 5"
+
+setup factory/issue-5 agentbot x; partfx 101 completed
+jq -n '[{number:100, state:"closed", state_reason:"completed"}, {number:101, state:"closed", state_reason:"completed"}]' > "$FX/sub_issues.json"
+"$SCRIPT" child-closed 101 >/dev/null
+check "P5 last part closes the parent as completed" yes "issue close 5 --repo owner/repo --reason completed"
+
+setup factory/issue-5 agentbot x; partfx 101 completed
+jq '.user.login = "mallory"' "$FX/issue-101.json" > "$FX/t" && mv "$FX/t" "$FX/issue-101.json"
+jq -n '[{number:101, state:"closed", state_reason:"completed"}]' > "$FX/sub_issues.json"
+"$SCRIPT" child-closed 101 >/dev/null
+check "P6 part marker by a stranger is ignored" no "issue (close|comment|edit)"
+
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_5", state:"closed", labels:[{name:"factory:story"},{name:"factory:split"}]}' > "$FX/issue-5.json"
+jq -n '[{number:100, state:"closed", state_reason:"completed"}, {number:101, state:"open"}]' > "$FX/sub_issues.json"
+"$SCRIPT" closed 5 not_planned >/dev/null
+check "P7 cancelled parent cancels its open parts" yes "issue close 101 --repo owner/repo --reason not planned"
+check "P7 closed parts stay closed" no "issue close 100"
+
+
+# P8. /cancel on the last open part closes the parent (close happens before child-closed).
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_p", state:"open", user:{login:"github-actions[bot]", type:"Bot"}, body:"<!-- factory:child-of 40 -->\n_Part_", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-41.json"
+jq -n '{node_id:"I_40", state:"open", labels:[{name:"factory:story"},{name:"factory:split"}]}' > "$FX/issue-40.json"
+jq -n '[{number:41, state:"open"}]' > "$FX/sub_issues.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/cancel", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 41 900 >/dev/null 2>&1
+check "P8 /cancel on the last part closes the parent" yes "issue close 40 --repo owner/repo --reason not planned"
+
+# P9. Nested split: the last sub-part closes its parent part, which starts the grandparent's next part.
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_a", state:"closed", state_reason:"completed", user:{login:"github-actions[bot]"}, body:"<!-- factory:child-of 61 -->\n_Part_", labels:[{name:"factory:story"}]}' > "$FX/issue-70.json"
+jq -n '{node_id:"I_61", state:"open", user:{login:"github-actions[bot]"}, body:"<!-- factory:child-of 60 -->\n_Part_", labels:[{name:"factory:story"},{name:"factory:split"}]}' > "$FX/issue-61.json"
+jq -n '{node_id:"I_60", state:"open", labels:[{name:"factory:story"},{name:"factory:split"}]}' > "$FX/issue-60.json"
+jq -n '{node_id:"I_62", user:{login:"github-actions[bot]"}, labels:[{name:"factory:story"}]}' > "$FX/issue-62.json"
+jq -n '[{number:70, state:"closed", state_reason:"completed"}]' > "$FX/sub_issues-61.json"
+jq -n '[{number:61, state:"open"}, {number:62, state:"open"}]' > "$FX/sub_issues-60.json"
+"$SCRIPT" child-closed 70 >/dev/null 2>&1
+check "P9 nested: grandparent's next part starts" yes "issue edit 62 .*--add-label factory:breakdown"
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

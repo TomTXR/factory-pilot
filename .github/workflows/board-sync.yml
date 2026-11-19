@@ -39,6 +39,7 @@ jobs:
             factory:approved-for-production|factory:deploying) s="Deploying" ;;
             factory:done) s="Done" ;;
             factory:blocked) s="Blocked" ;;
+            factory:split) s="Split" ;;
             factory:cancelled) s="Cancelled" ;;
             *) s="" ;;
           esac

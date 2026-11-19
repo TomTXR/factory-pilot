@@ -18,7 +18,7 @@ knowledge/
     └── <topic>/<article>.md         compiled articles (one level of topics only)
 ```
 
-Topics: `product`, `domain`, `users`, `decisions`, `lessons`. Add a topic only for a genuinely distinct area, and add it to `wiki/index.md` with a one-line description.
+Topics: `product`, `domain`, `users`, `process`, `decisions`, `lessons`. Add a topic only for a genuinely distinct area, and add it to `wiki/index.md` with a one-line description.
 
 Templates: `references/` next to this file.
 

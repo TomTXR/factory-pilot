@@ -25,3 +25,11 @@ Who uses the app and what they need.
 | Article | Summary | Updated |
 |---------|---------|---------|
 | [Home Owner Persona](users/home-owner.md) | Mobile logging on site, yearly totals, no login, EUR only (SYNTHETIC) | 2026-11-17 |
+
+## process
+
+How work moves through the software factory.
+
+| Article | Summary | Updated |
+|---------|---------|---------|
+| [Story Workflow](process/story-workflow.md) | Stages, human commands at the two gates, cancel, and automatic story split into sub-issues | 2026-11-19 |

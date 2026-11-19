@@ -135,6 +135,8 @@ jobs:
               gh issue comment "$i" --repo "$GITHUB_REPOSITORY" --body "Deployed to production: https://pilot.$DOMAIN (commit ${SHA:0:7}, PR #$pr)."
               # Closing keywords do not apply when GITHUB_TOKEN merged the PR (lander), so close explicitly.
               gh issue close "$i" --repo "$GITHUB_REPOSITORY" --reason completed 2>/dev/null || true
+              # Part of a split story: start the next part, or close the parent after the last part.
+              .github/scripts/factory-flow.sh child-closed "$i" || echo "::warning::split follow-up failed for #$i"
             else
               gh issue edit "$i" --repo "$GITHUB_REPOSITORY" --remove-label factory:deploying --add-label factory:blocked
               .github/scripts/board-status.sh "$node" Blocked
