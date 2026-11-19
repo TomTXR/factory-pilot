@@ -889,6 +889,9 @@ check "RL6 /approve on a story blocked by the rework limit does not release" no 
 relfx factory:blocked "release-blocked 16 sha1" "Looks fine now, ship it"
 FACTORY_APPROVERS=alice CLASSIFY_INTENT=approve GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
 check "RL7 only an explicit /approve retries a release" no "add-label factory:approved-for-production"
+relfx factory:approved-for-production "" x
+"$SCRIPT" status 5 "Release blocked: test." "release-blocked 16 sha1" >/dev/null 2>&1
+check "RL11 the status subcommand records a mark (used by land.yml)" yes "^  \| <!-- factory:mark release-blocked 16 sha1 -->$"
 L="$ROOT/.github/workflows/land.yml"
 grep -q 'GH_TOKEN="$BOT_TOKEN" gh pr update-branch' "$L" && [ "$(grep -c 'gh pr update-branch' "$L")" = 1 ] \
   && { pass=$((pass+1)); echo "ok   RL8 the branch update runs as the machine account only"; } || { fail=$((fail+1)); echo "FAIL RL8 branch update identity"; }
