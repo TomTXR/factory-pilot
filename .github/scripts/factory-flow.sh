@@ -20,6 +20,8 @@
 #   factory-flow.sh ready-check <pr>         preview deployed: ready for human?
 #   factory-flow.sh ci-failed <pr> <run> <sha>  CI failed on a factory PR: send it back to the builder
 #   factory-flow.sh conflicts [pr...]        after a push: send conflicting factory PRs back to the builder
+#   factory-flow.sh agent-blocked <issue>    an agent set factory:blocked with a reason: notify the owners
+#   factory-flow.sh watchdog                 scheduled: block stories whose agent step made no progress in time
 #   factory-flow.sh plan-ready <issue>       breakdown posted a plan: notify approvers
 #   factory-flow.sh start <issue>            new story: start the breakdown
 #   factory-flow.sh command <issue> <id>     a comment by a human on a story issue (or a human task)
@@ -136,6 +138,9 @@ blockers() { # issue -> JSON array of the issues it is blocked by (number, state
   gh api "repos/$R/issues/$1/dependencies/blocked_by?per_page=100" | jq -c '[.[] | {number, state, state_reason}]'
 }
 open_blockers() { blockers "$1" | jq -r '.[] | select(.state == "open") | .number'; }
+plan_depends() { # issue -> issue numbers listed in the plan's "Dependencies" section (marker <!-- factory:depends-on -->)
+  plan_body "$1" | sed -n '/^<!-- factory:depends-on -->$/,/^## /p' | grep -oE '#[0-9]+' | tr -d '#' | grep -vx "$1" | sort -un || true
+}
 add_blocker() { # issue blocker: <issue> is blocked by <blocker>
   local bid; bid=$(gh api "repos/$R/issues/$2" | jq -r .id)
   gh api -X POST "repos/$R/issues/$1/dependencies/blocked_by" -F issue_id="$bid" >/dev/null || echo "::warning::could not mark #$1 as blocked by #$2"
@@ -361,6 +366,59 @@ case "$cmd" in
     done
     ;;
 
+  agent-blocked)
+    # An agent (for example the builder) stopped on purpose and set factory:blocked
+    # with a comment that says why (AGENTS.md). Make it a proper block and ask the owners.
+    issue="$1"
+    case "$(current_state "$issue")" in cancelled|done) exit 0 ;; esac
+    set_state "$issue" factory:blocked; board "$issue" Blocked
+    url=$(gh api "repos/$R/issues/$issue/comments" --paginate | jq -rs --arg agents ",$AGENTS," \
+      '[.[][] | (.user.login | ascii_downcase) as $u | select($agents | ascii_downcase | contains("," + $u + ","))] | last | .html_url // ""')
+    status "$issue" "Blocked: an agent stopped and explained why${url:+ ($url)}."
+    notify "$issue" "**Blocked:** an agent stopped working on this story and explained why${url:+: $url}. Answer there, then reply \`/retry\` to restart the step (it reads this thread)."
+    echo "issue #$issue -> blocked by an agent"
+    ;;
+
+  watchdog)
+    # Safety net for silent stalls: an agent step that makes no progress within its
+    # time limit is blocked and the owners are told, once per entry into the state.
+    # Progress means the state label changed (every agent step ends by changing it).
+    now="${WATCHDOG_NOW:-$(date -u +%s)}"
+    for issue in $(gh api "repos/$R/issues?labels=factory:story&state=open&per_page=100" | jq -r '.[] | select(.pull_request | not) | .number'); do
+      st=$(current_state "$issue")
+      case "$st" in
+        breakdown) limit=30; step="Agent: Planning" ;;
+        plan-approved|in-progress) limit=60; step="Agent: Building" ;;
+        agent-review) limit=60; step="Agent: Reviewing" ;;
+        rework) limit=60; step="Agent: Reworking" ;;
+        approved-for-production|deploying) limit=45; step="Agent: Deploying" ;;
+        *) continue ;;
+      esac
+      ev=$(gh api "repos/$R/issues/$issue/events?per_page=100" --paginate | jq -s -c --arg l "factory:$st" '[.[][] | select(.event == "labeled" and .label.name == $l)] | last // empty')
+      [ -n "$ev" ] || continue
+      evid=$(echo "$ev" | jq -r .id); since=$(echo "$ev" | jq -r .created_at)
+      age=$(( (now - $(date -u -d "$since" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$since" +%s)) / 60 ))
+      [ "$age" -ge "$limit" ] || { echo "#$issue $st for ${age} min (limit $limit)"; continue; }
+      has_mark "$issue" "stalled $evid" && { echo "#$issue already reported"; continue; }
+      hint="Reply \`/retry\` to restart the step."
+      extra=""
+      if [ "$st" = approved-for-production ] || [ "$st" = deploying ]; then
+        pr=$(open_factory_prs "$issue" | head -1)
+        if [ -n "$pr" ]; then
+          extra="release-blocked $pr $(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)"
+          hint="Check the release run, then reply \`/approve\` to try the release again."
+        else
+          hint="The PR is already merged: check the deploy run and production, then close the story by hand if it is live."
+        fi
+      fi
+      set_state "$issue" factory:blocked; board "$issue" Blocked
+      status "$issue" "Watchdog: no progress in $step for $age minutes (limit $limit)." "stalled $evid"
+      [ -n "$extra" ] && status "$issue" "Release can be retried with /approve." "$extra"
+      notify "$issue" "**Blocked (watchdog):** no progress in **$step** for $age minutes (limit $limit). The agent step stopped without a result. $hint"
+      echo "#$issue stalled in $st for $age min -> blocked"
+    done
+    ;;
+
   ready-check)
     pr="$1"; issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || { echo "not a factory PR"; exit 0; }
     case "$(current_state "$issue")" in
@@ -490,6 +548,12 @@ case "$cmd" in
         FACTORY_START_APPROVED=1 FACTORY_STARTED_BY="$author" "$0" start "$issue" >/dev/null
         ack "$issue" "$cid" "Breakdown started $by." ;;
       plan-review:approve)
+        # Dependencies the plan names become GitHub "blocked by" relations (no manual step).
+        for dep in $(plan_depends "$issue"); do
+          if gh api "repos/$R/issues/$dep" >/dev/null 2>&1; then
+            blockers "$issue" | jq -e --argjson d "$dep" 'any(.[]; .number == $d)' >/dev/null || add_blocker "$issue" "$dep"
+          fi
+        done
         dir=$(mktemp -d); parts=$(split_parts "$issue" "$dir"); rm -rf "$dir"
         if [ "$parts" -ge 2 ]; then
           "$0" split "$issue" "$author"

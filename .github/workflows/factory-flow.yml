@@ -115,6 +115,20 @@ jobs:
           out=$(mktemp); GITHUB_OUTPUT="$out" .github/scripts/factory-flow.sh closed "${{ github.event.issue.number }}" "$REASON"
           echo "prs=$(grep '^cleanup_pr=' "$out" | cut -d= -f2 | jq -Rsc 'split("\n") | map(select(length>0))')" >> "$GITHUB_OUTPUT"
 
+  agent-blocked:
+    # An agent stopped on purpose: it commented why and set factory:blocked (AGENTS.md).
+    # Labels set with the agents' token trigger workflows; the factory's own do not.
+    if: >
+      github.event_name == 'issues' && github.event.action == 'labeled' &&
+      github.event.label.name == 'factory:blocked' &&
+      contains(format(',{0},', vars.FACTORY_AGENT_LOGINS), format(',{0},', github.event.sender.login))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      - run: .github/scripts/factory-flow.sh agent-blocked "${{ github.event.issue.number }}"
+
   closed-other:
     # Any other closed issue (bug, infra ticket, human task) can block a story
     # (GitHub "blocked by"): release waiting stories it blocked.

@@ -1,0 +1,36 @@
+name: Factory watchdog
+
+# Safety net for silent stalls (#34: reviewer skipped a red PR; #35: release waited
+# for held CI; #46: builder stopped without telling anyone). Every 15 minutes: a story
+# whose agent step made no progress within its time limit is blocked and its owners
+# are told. Progress means the factory state label changed.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: factory-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FACTORY_AGENT_LOGINS: ${{ vars.FACTORY_AGENT_LOGINS }}
+      FACTORY_APPROVERS: ${{ vars.FACTORY_APPROVERS }}
+      PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+      PROJECT_LOGIN: TomTXR
+      PROJECT_NUMBER: "1"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - run: .github/scripts/factory-flow.sh watchdog
