@@ -26,7 +26,7 @@ Source: [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-prope
 - Users can add, switch between, view, edit and permanently delete (hard delete, after confirmation) properties. The selected property is remembered per browser and forgotten on sign-out.
 - A property belongs to exactly one account, the one that created it. An account sees, edits and deletes only its own properties. Another account's property answers 404, the same as an id that does not exist. The owning account is never part of an API response and cannot be set through a request body.
 - The duplicate check applies per account: two accounts can each have the same address and owner name, one account cannot have it twice.
-- Properties without an account (created before accounts owned data) are claimed, none deleted: the first account that signs in after the deploy takes all of them. Later accounts do not take over owned properties. Sharing between accounts is a later story (#32).
+- Properties without an account are not shown to any account and are never claimed automatically. If they ever exist, they are assigned to an account by hand. Sharing between accounts is a later story (#32).
 - Maintenance entries and items for a property do not exist yet. When they are added, the story must define what happens to them when a property is deleted.
 
 ## Accounts and sign-in

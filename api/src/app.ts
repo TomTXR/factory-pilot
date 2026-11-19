@@ -38,20 +38,7 @@ export function createApp(deps: AppDeps): Hono {
 
   app.get('/version', (c) => c.json({ version: deps.version }));
 
-  const { routes, requireUser } = createAuth(
-    deps.auth,
-    deps.now ?? (() => new Date()),
-    async (user) => {
-      // Properties created before accounts existed go to the first account that signs in.
-      // A failed claim is logged and never blocks the sign-in.
-      try {
-        const claimed = await deps.properties.claimUnowned(user.id);
-        if (claimed > 0) logger.info('claimed unowned properties', { userId: user.id, count: claimed });
-      } catch (err) {
-        logger.error('claim of unowned properties failed', { userId: user.id, error: String(err) });
-      }
-    },
-  );
+  const { routes, requireUser } = createAuth(deps.auth, deps.now ?? (() => new Date()));
   app.route('/auth', routes);
 
   // Everything below is protected; /health, /version and /auth stay public.

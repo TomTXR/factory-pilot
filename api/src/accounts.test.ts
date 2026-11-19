@@ -92,45 +92,8 @@ describe('properties per account', () => {
   });
 });
 
-const oldProperty = {
-  displayName: null,
-  street: 'Oldstraat',
-  houseNumber: '1',
-  houseNumberAddition: '',
-  postalCode: '1000 AA',
-  city: 'Oudstad',
-  country: 'NL' as const,
-  ownerName: 'Old Owner',
-  propertyType: null,
-  yearBuilt: null,
-  livingAreaM2: null,
-  rooms: null,
-  notes: null,
-};
-
-describe('claim of unowned properties', () => {
-  it('skips an unowned row the account already has and never hands it to a later account', async () => {
-    const repo = memoryRepository();
-    await repo.create('a', oldProperty);
-    repo.seedUnowned({ ...oldProperty, ownerName: 'OLD OWNER', notes: 'old private notes' });
-    repo.seedUnowned({ ...oldProperty, houseNumber: '2' });
-    expect(await repo.claimUnowned('a')).toBe(1);
-    expect(await repo.claimUnowned('b')).toBe(0);
-    expect(await repo.list('b')).toEqual([]);
-    expect((await repo.list('a')).map((p) => p.houseNumber)).toEqual(['1', '2']);
-  });
-
-  it('does not block sign-in when the claim throws', async () => {
-    const repo = memoryRepository();
-    repo.claimUnowned = async () => {
-      throw new Error('boom');
-    };
-    const app = createApp({ checkDb: async () => true, properties: repo, version: 'test', auth: testAuth() });
-    const res = await app.request('/api/auth/test-login', { method: 'POST' });
-    expect(res.status).toBe(200);
-  });
-
-  it('gives unowned properties to the first account that signs in, and not to later ones', async () => {
+describe('properties without an account', () => {
+  it('stay invisible to every account and are not claimed by signing in', async () => {
     const { repo, signIn } = setup();
     repo.seedUnowned({
       displayName: null,
@@ -149,9 +112,8 @@ describe('claim of unowned properties', () => {
     });
     const a = await signIn('a');
     const b = await signIn('b');
-    expect(((await (await a('GET')).json()) as { street: string }[]).map((p) => p.street)).toEqual(['Oldstraat']);
-    expect(((await (await b('GET')).json()) as unknown[]).length).toBe(0);
-    await signIn('b');
-    expect(((await (await a('GET')).json()) as unknown[]).length).toBe(1);
+    expect(await (await a('GET')).json()).toEqual([]);
+    expect(await (await b('GET')).json()).toEqual([]);
+    expect((await a('GET', '/00000000-0000-4000-8000-000000000001')).status).toBe(404);
   });
 });

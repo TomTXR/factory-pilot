@@ -5,7 +5,6 @@ import { normaliseKey, type Property, type PropertyInput, type PropertyRepositor
 export function memoryRepository(): PropertyRepository & { seedUnowned: (input: PropertyInput) => void } {
   const rows = new Map<string, Property & { account: string | null }>();
   let seq = 0;
-  let claimed = false;
   const strip = (row: Property & { account: string | null }): Property => {
     const { account, ...property } = row;
     void account;
@@ -46,20 +45,7 @@ export function memoryRepository(): PropertyRepository & { seedUnowned: (input: 
     async remove(userId, id) {
       return own(userId, id) ? rows.delete(id) : false;
     },
-    async claimUnowned(userId) {
-      if (claimed) return 0;
-      claimed = true;
-      let count = 0;
-      for (const row of rows.values()) {
-        // Same rule as the database: a row the account already has an identical one of stays unowned.
-        if (row.account === null && !taken(userId, normaliseKey(row))) {
-          row.account = userId;
-          count += 1;
-        }
-      }
-      return count;
-    },
-    /** Test helper: a property created before accounts existed. */
+    /** Test helper: a property without an account, which no account can see. */
     seedUnowned(input) {
       seq += 1;
       const now = new Date(2026, 0, seq).toISOString();
