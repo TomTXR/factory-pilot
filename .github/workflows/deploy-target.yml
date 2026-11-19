@@ -115,6 +115,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           FACTORY_AGENT_LOGINS: ${{ vars.FACTORY_AGENT_LOGINS }}
+          FACTORY_APPROVERS: ${{ vars.FACTORY_APPROVERS }}
           PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           PROJECT_LOGIN: TomTXR
           PROJECT_NUMBER: "1"
@@ -125,6 +126,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          FACTORY_APPROVERS: ${{ vars.FACTORY_APPROVERS }}
           SHA: ${{ inputs.sha }}
           RESULT: ${{ job.status }}
         run: |
@@ -139,7 +141,7 @@ jobs:
             if [ "$RESULT" = "success" ]; then
               gh issue edit "$i" --repo "$GITHUB_REPOSITORY" --remove-label factory:deploying --add-label factory:done
               .github/scripts/board-status.sh "$node" Done
-              gh issue comment "$i" --repo "$GITHUB_REPOSITORY" --body "Deployed to production: https://pilot.$DOMAIN (commit ${SHA:0:7}, PR #$pr)."
+              .github/scripts/factory-flow.sh status "$i" "Done: deployed to production https://pilot.$DOMAIN (commit ${SHA:0:7}, PR #$pr)."
               # Closing keywords do not apply when GITHUB_TOKEN merged the PR (lander), so close explicitly.
               gh issue close "$i" --repo "$GITHUB_REPOSITORY" --reason completed 2>/dev/null || true
               # Closing by GITHUB_TOKEN fires no event: run the close follow-ups here
@@ -148,6 +150,6 @@ jobs:
             else
               gh issue edit "$i" --repo "$GITHUB_REPOSITORY" --remove-label factory:deploying --add-label factory:blocked
               .github/scripts/board-status.sh "$node" Blocked
-              gh issue comment "$i" --repo "$GITHUB_REPOSITORY" --body "Production deploy of commit ${SHA:0:7} (PR #$pr) failed. A human must check: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+              .github/scripts/factory-flow.sh notify "$i" "**Blocked:** the production deploy of commit ${SHA:0:7} (PR #$pr) failed. Check $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID, then reply \`/retry\`."
             fi
           done

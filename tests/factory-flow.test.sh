@@ -10,9 +10,16 @@ cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 # Stub: log the call, answer API reads from fixture files.
 echo "$*" >> "$GH_LOG"
+# Log the content of file bodies too (status section, created issues).
+for a in "$@"; do case "$a" in body=@*) f="${a#body=@}"; [ -f "$f" ] && sed 's/^/  | /' "$f" >> "$GH_LOG" ;; esac; done
 if [ "$1" = "api" ]; then
   path=""; for a in "$@"; do case "$a" in repos/*) path="$a"; break ;; esac; done
+  # Stateful issue body edits (status section).
+  case "$*" in *"-X PATCH"*) for a in "$@"; do case "$a" in body=@*)
+    n="${path##*/}"; f="$FX/issue-$n.json"; [ -f "$f" ] || { [ -f "$FX/issue.json" ] && cp "$FX/issue.json" "$f" || echo '{"labels":[]}' > "$f"; }
+    jq --rawfile b "${a#body=@}" '.body = $b' "$f" > "$f.t" && mv "$f.t" "$f" ;; esac; done; echo '{}'; exit 0 ;; esac
   case "$path" in
+    */reactions) case "$*" in *"-X POST"*) echo '{}' ;; *) cat "$FX/reactions.json" 2>/dev/null || echo '[]' ;; esac ;;
     */dependencies/blocked_by*) case "$*" in *"-X POST"*) echo '{}' ;; *) dn=${path%/dependencies*}; dn=${dn##*/}; cat "$FX/blocked_by-$dn.json" 2>/dev/null || echo '[]' ;; esac ;;
     */dependencies/blocking*) dn=${path%/dependencies*}; dn=${dn##*/}; cat "$FX/blocking-$dn.json" 2>/dev/null || echo '[]' ;;
     */sub_issues*) case "$*" in *"-X POST"*) echo '{}' ;; *) pn=${path%/sub_issues*}; pn=${pn##*/}; cat "$FX/sub_issues-$pn.json" 2>/dev/null || cat "$FX/sub_issues.json" 2>/dev/null || echo '[]' ;; esac ;;
@@ -24,7 +31,7 @@ if [ "$1" = "api" ]; then
     */pulls/*) cat "$FX/pull.json" ;;
     */issues/comments/*) cat "$FX/comment.json" ;;
     */issues/*/comments) cat "$FX/comments.json" ;;
-    */issues/*) if [ -f "$FX/issue-${path##*/}.json" ]; then cat "$FX/issue-${path##*/}.json"; elif [ -f "$FX/issue.json" ]; then cat "$FX/issue.json"; else echo '{"node_id":"I_test","labels":[]}'; fi ;;
+    */issues/*) if [ -n "${STUB_CHANGING:-}" ]; then c=$(( $(cat "$FX/seq" 2>/dev/null || echo 0) + 1 )); echo "$c" > "$FX/seq"; jq --arg t "$c" '.updated_at = $t' "$FX/issue.json"; elif [ -f "$FX/issue-${path##*/}.json" ]; then cat "$FX/issue-${path##*/}.json"; elif [ -f "$FX/issue.json" ]; then cat "$FX/issue.json"; else echo '{"node_id":"I_test","labels":[]}'; fi ;;
     *) echo '{}' ;;
   esac
 fi
@@ -40,7 +47,7 @@ exit 0
 STUB
 chmod +x "$WORK/bin/gh"
 export PATH="$WORK/bin:$PATH" FX="$WORK/fx" GH_LOG="$WORK/gh.log"
-export GITHUB_REPOSITORY=owner/repo FACTORY_AGENT_LOGINS=agentbot PROJECT_TOKEN= PROJECT_LOGIN=x PROJECT_NUMBER=1
+export GITHUB_REPOSITORY=owner/repo FACTORY_AGENT_LOGINS=agentbot PROJECT_TOKEN= PROJECT_LOGIN=x PROJECT_NUMBER=1 STATUS_SETTLE=0
 
 M='<!-- openhands-review-run: abc -->'
 pass=0; fail=0
@@ -48,7 +55,7 @@ setup() { # head_ref review_author review_body
   : > "$GH_LOG"
   jq -n --arg ref "$1" '{state:"open", head:{ref:$ref, sha:"sha1"}}' > "$FX/pull.json"
   jq -n --arg u "$2" --arg b "$3" '{user:{login:$u}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"
-  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/bot_issues.json" "$FX"/blocked_by-*.json "$FX"/blocking-*.json "$FX/next" "$WORK/out"
+  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/bot_issues.json" "$FX"/blocked_by-*.json "$FX"/blocking-*.json "$FX/reactions.json" "$FX/seq" "$FX/next" "$WORK/out"
   jq -n '[{number:16, head:{ref:"factory/issue-5"}}, {number:17, head:{ref:"factory/issue-50"}}]' > "$FX/open_pulls.json"
 }
 check() { # name expected(yes|no) pattern
@@ -180,7 +187,7 @@ check "C1 non-approver command ignored" no "issue (edit|comment)"
 
 cmd factory:plan-review alice "/approve"
 check "C2 /approve at plan review starts builder" yes "add-label factory:plan-approved"
-check "C2 acknowledged" yes "factory:ack 900"
+check "C2 acknowledged with a reaction, not a comment" yes "comments/900/reactions -f content=\+1"
 
 cmd factory:plan-review alice "Please also add a delete dialog" changes
 check "C3 inferred changes at plan review -> refined plan" yes "add-label factory:breakdown"
@@ -220,7 +227,7 @@ check "C11 unclear: explains the commands" yes "No action taken"
 setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", user:{login:"alice"}, labels:[{name:"factory:story"}]}' > "$FX/issue.json"
 "$SCRIPT" start 5 >/dev/null
 check "S1 new story by approver starts breakdown" yes "add-label factory:breakdown"
-jq -n '{node_id:"I_test", user:{login:"mallory"}, labels:[{name:"factory:story"}]}' > "$FX/issue.json"; : > "$GH_LOG"
+jq -n '{node_id:"I_test", user:{login:"mallory"}, labels:[{name:"factory:story"}]}' > "$FX/issue.json"; rm -f "$FX/issue-5.json"; : > "$GH_LOG"
 "$SCRIPT" start 5 >/dev/null
 check "S3 story by a stranger does not start" no "issue edit"
 cmd "" alice "/approve"; jq -n '{node_id:"I_test", user:{login:"mallory"}, labels:[{name:"factory:story"}]}' > "$FX/issue.json"
@@ -262,7 +269,7 @@ check "X6 /cancel on a done story: no close" no "issue close"
 setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:cancelled"}]}' > "$FX/issue.json"
 "$SCRIPT" reopened 5 >/dev/null
 check "X7 reopened clears cancelled" yes "remove-label factory:cancelled"
-check "X7 reopened explains /start" yes "factory:reopened"
+check "X7 reopened explains /start in the status" yes "Reopened. Human: Start story"
 
 # X8. Duplicate is handled like not planned.
 setup factory/issue-5 agentbot "x"; jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:human-review"}]}' > "$FX/issue.json"
@@ -464,7 +471,7 @@ grep -q '^writer' "$CLASSIFY_LOG" && { fail=$((fail+1)); echo "FAIL F2 writer mu
 fcmd factory:in-progress "/followup shared household access" unclear false
 check "F3 /followup works outside the gates" yes "api -X POST repos/owner/repo/issues -f title=Shared household access"
 check "F3 /followup leaves the story state alone" no "issue edit 5 "
-check "F3 ack" yes "Follow-up request by @alice handled"
+check "F3 ack" yes "Follow-up request by alice handled"
 [ -s "$CLASSIFY_LOG" ] && grep -qv '^writer' "$CLASSIFY_LOG" && { fail=$((fail+1)); echo "FAIL F3 classifier must not run for /followup"; } || { pass=$((pass+1)); echo "ok   F3 no classifier for /followup"; }
 
 fcmd factory:plan-review "/approve
@@ -510,7 +517,7 @@ dcmd factory:plan-review "/approve"; jq -n '[{number:28, state:"open", state_rea
 FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
 check "D1 approved plan with an open blocker waits" yes "issue edit 5 .*--add-label factory:waiting"
 check "D1 builder not started" no "add-label factory:plan-approved"
-check "D1 ack names the blocker" yes "The build waits for #28"
+check "D1 status names the blocker" yes "the build waits for #28"
 
 dcmd factory:plan-review "/approve"; jq -n '[{number:28, state:"closed", state_reason:"completed"}]' > "$FX/blocked_by-5.json"
 FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
@@ -571,6 +578,104 @@ if grep -q "!contains(github.event.issue.labels.\*.name, 'factory:story')" "$WF"
 else
   fail=$((fail+1)); echo "FAIL D10 workflow has no unblock job for closed non-story issues"
 fi
+
+
+# Q. Quiet mode: progress goes into the status section (edits send no email); only action requests are comments with mentions.
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_test", body:"### Story\nAs a user.", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan"}]' > "$FX/comments.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice,bob "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "Q1 plan approval posts no comment" no "issue comment"
+check "Q1 plan approval reacts on the comment" yes "comments/900/reactions -f content=\+1"
+check "Q1 status names the approver without @" yes "Plan approved by alice"
+check "Q1 no @mention in the status" no "^  \|.*@alice"
+b=$(jq -r .body "$FX/issue-5.json")
+if printf '%s' "$b" | grep -q '^### Story' && printf '%s' "$b" | grep -q '^<!-- factory:status:start -->' && printf '%s' "$b" | grep -q '^<!-- factory:status:end -->'; then pass=$((pass+1)); echo "ok   Q2 status section appended, story text kept"; else fail=$((fail+1)); echo "FAIL Q2 status section"; printf '%s\n' "$b"; fi
+"$SCRIPT" status 5 "second step" >/dev/null 2>&1; "$SCRIPT" status 5 "third step" >/dev/null 2>&1
+b=$(jq -r .body "$FX/issue-5.json")
+n=$(printf '%s\n' "$b" | grep -c '^<!-- factory:status:start -->'); h=$(printf '%s\n' "$b" | grep -c '^- ')
+if [ "$n" = 1 ] && [ "$h" = 3 ] && printf '%s' "$b" | grep -q '^\*\*Factory status\*\* .*third step'; then pass=$((pass+1)); echo "ok   Q2 one section, current line and 3 history lines"; else fail=$((fail+1)); echo "FAIL Q2 section count=$n history=$h"; printf '%s\n' "$b"; fi
+
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '[{user:{login:"github-actions[bot]"}, content:"+1"}]' > "$FX/reactions.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "Q3 a comment with the bot's reaction is handled once" no "issue edit 5"
+
+cmd factory:plan-review alice "hmm, not sure" unclear
+check "Q4 unclear: the author is asked by mention" yes "^@alice Read as: unclear.*No action taken"
+
+setup factory/issue-5 agentbot "$M
+✅ APPROVED"
+jq -n --arg m "$M" '[{commit_id:"sha1", user:{login:"agentbot"}, body:($m+"\n✅ APPROVED")}]' > "$FX/reviews.json"
+FACTORY_APPROVERS=alice,bob PREVIEW_HEALTH_CMD=true "$SCRIPT" ready-check 16 >/dev/null 2>&1
+check "Q5 test request mentions the approvers" yes "^@alice @bob$"
+
+setup factory/issue-5 agentbot x
+jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan\n---\n**Plan ready for your review** @alice @bob"}]' > "$FX/comments.json"
+FACTORY_APPROVERS=alice,bob "$SCRIPT" plan-ready 5 >/dev/null 2>&1
+check "Q6 plan with mentions: no extra notice" no "issue comment"
+check "Q6 plan with mentions: status marks it" yes "factory:mark plan-ready 12"
+setup factory/issue-5 agentbot x
+jq -n '[{id:12, user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\nplan\n**Plan ready for your review** @alice"}]' > "$FX/comments.json"
+FACTORY_APPROVERS=alice,bob "$SCRIPT" plan-ready 5 >/dev/null 2>&1
+check "Q6 plan missing a mention: fallback notice" yes "Plan ready for your review\*\* @alice @bob"
+
+setup factory/issue-5 agentbot "$M
+⏸ INCONCLUSIVE"
+FACTORY_APPROVERS=alice,bob "$SCRIPT" review 16 1 >/dev/null 2>&1
+check "Q7 blocked notice mentions the approvers" yes "issue comment 5 --repo owner/repo --body @alice @bob$"
+check "Q7 blocked notice text" yes "^\*\*Blocked:\*\* the reviewer agent"
+
+setup factory/issue-5 agentbot x; partfx 100 not_planned
+jq -n '{node_id:"I_n", user:{login:"github-actions[bot]"}, labels:[{name:"factory:story"}]}' > "$FX/issue-101.json"
+jq -n '[{number:100, state:"closed", state_reason:"not_planned"}, {number:101, state:"open"}]' > "$FX/sub_issues.json"
+FACTORY_APPROVERS=alice "$SCRIPT" child-closed 100 >/dev/null 2>&1
+check "Q8 cancelled part: the next part asks the approvers" yes "issue comment 101 --repo owner/repo --body @alice$"
+check "Q8 cancelled part: question text" yes "previous part #100 was closed without being completed"
+check "Q8 cancelled part: the next part does not start" no "issue edit 101 .*--add-label factory:breakdown"
+
+setup factory/issue-5 agentbot "$M
+🔄 CHANGES REQUESTED"
+echo '[]' > "$FX/comments.json"
+jq -n '[{number:16, head:{ref:"factory/issue-5"}}]' > "$FX/open_pulls.json"
+"$SCRIPT" review 16 1 >/dev/null 2>&1
+check "Q9 rework with an open PR: no issue comment" no "issue comment 5"
+check "Q9 rework with an open PR: reason on the PR" yes "pr comment 16"
+
+
+# R. Races and retries: no shared state for duplicate protection; status writes verify themselves.
+setup factory/issue-5 agentbot x; splitfx "$SPLIT_PLAN"
+jq -n '{node_id:"I_test", id:5000, labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '[{number:100, id:100000, body:"<!-- factory:child-of 5 part 1 -->\n_Part_"}]' > "$FX/bot_issues.json"
+echo 101 > "$FX/next"; jq -n '{id:100000}' > "$FX/issue-100.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "R1 split rerun reuses the existing part 1" no "title=Sign in with Google"
+check "R1 split rerun creates the missing part 2" yes "title=Own data per account"
+check "R1 part 2 is blocked by the reused part 1" yes "issues/101/dependencies/blocked_by -F issue_id=100000"
+
+setup factory/issue-5 agentbot x; splitfx "$TASK_PLAN"
+jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '[{number:90, id:90000, body:"<!-- factory:human-task-of 5 plan 12 part 1 -->\nsteps"}]' > "$FX/bot_issues.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "R2 task rerun reuses the existing task" no "title=Human task"
+check "R2 task rerun still approves the plan" yes "add-label factory:plan-approved"
+
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_test", body:"story", labels:[]}' > "$FX/issue.json"
+STUB_CHANGING=1 "$SCRIPT" status 5 "busy issue" >/dev/null 2>&1
+check "R3 no write while the issue keeps changing (human edit or another step)" no "-X PATCH"
+
+setup factory/issue-5 agentbot "$M
+🔄 CHANGES REQUESTED"
+jq -n '[{user:{login:"github-actions[bot]"}, body:"<!-- factory:rework -->\nold"}]' > "$FX/comments.json"
+jq -n '[{number:16, head:{ref:"factory/issue-5"}}]' > "$FX/open_pulls.json"
+"$SCRIPT" review 16 1 >/dev/null 2>&1
+check "R4 a rework marked on issue and PR counts once" yes "Changes requested \(rework 2 of 3\)"
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

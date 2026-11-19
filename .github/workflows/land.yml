@@ -31,6 +31,7 @@ jobs:
       SENDER: ${{ inputs.approver }}
       SENDER_TYPE: User
       APPROVERS: ${{ vars.FACTORY_APPROVERS }}
+      FACTORY_APPROVERS: ${{ vars.FACTORY_APPROVERS }}
       PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
       PROJECT_LOGIN: TomTXR
       PROJECT_NUMBER: "1"
@@ -47,7 +48,7 @@ jobs:
           # Comma-separated allow-list in repository variable FACTORY_APPROVERS.
           if [ "$SENDER_TYPE" != "User" ] || [ -z "$APPROVERS" ] || ! echo ",$APPROVERS," | grep -qi ",$SENDER,"; then
             gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:approved-for-production
-            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Approval ignored: @$SENDER ($SENDER_TYPE) is not on the approver list. Label removed."
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Approval ignored: $SENDER ($SENDER_TYPE) is not on the approver list. Label removed."
             exit 1
           fi
           echo "approved by $SENDER"
@@ -61,7 +62,7 @@ jobs:
           if [ -z "$pr" ]; then
             gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:approved-for-production --add-label factory:blocked
             .github/scripts/board-status.sh "$NODE" Blocked
-            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Cannot land: expected exactly one open PR that closes this issue (\`Closes #$ISSUE\`)."
+            .github/scripts/factory-flow.sh notify "$ISSUE" "**Blocked:** cannot release: expected exactly one open PR that closes this issue (\`Closes #$ISSUE\`). Decide, then reply \`/retry\`."
             exit 1
           fi
           echo "number=$pr" >> "$GITHUB_OUTPUT"
@@ -87,7 +88,7 @@ jobs:
                 echo "conflict=true" >> "$GITHUB_OUTPUT"
                 # The script may have blocked the story (rework limit); its message is then final.
                 if gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json labels --jq '[.labels[].name] | index("factory:rework")' | grep -qv null; then
-                  gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "The approved release could not be merged: PR #$PR conflicts with the current \`main\`. The builder resolves the conflict now. Because the code changes, you will get a new test request and need to approve again."
+                  .github/scripts/factory-flow.sh status "$ISSUE" "The approved release could not be merged: PR #$PR conflicts with the current main. Agent: Reworking resolves the conflict; a new test request follows and needs a new /approve."
                 fi
                 exit 0 ;;
               BLOCKED_BY_FAILURE) break ;;
@@ -97,7 +98,7 @@ jobs:
           done
           gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:approved-for-production --add-label factory:blocked
           .github/scripts/board-status.sh "$NODE" Blocked
-          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Cannot land PR #$PR: merge state \`$state\` (conflict, failing or missing required checks). Needs a human."
+          .github/scripts/factory-flow.sh notify "$ISSUE" "**Blocked:** cannot release PR #$PR: merge state \`$state\` (conflict, failing or missing required checks). Decide, then reply \`/retry\`."
           exit 1
 
       - name: Merge
@@ -112,14 +113,14 @@ jobs:
           if ! gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --squash --delete-branch; then
             gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:approved-for-production --add-label factory:blocked
             .github/scripts/board-status.sh "$NODE" Blocked
-            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "The approved release of PR #$PR could not be merged (see the Land run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). Nothing was deployed. Reply \`/retry\` after the cause is fixed."
+            .github/scripts/factory-flow.sh notify "$ISSUE" "**Blocked:** the approved release of PR #$PR could not be merged (see the Land run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). Nothing was deployed. Reply \`/retry\` after the cause is fixed."
             exit 1
           fi
           sha=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json mergeCommit --jq .mergeCommit.oid)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:approved-for-production --add-label factory:deploying
           .github/scripts/board-status.sh "$NODE" Deploying
-          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Approved by @$SENDER. Merged PR #$PR as ${sha:0:7}. Deploying to production; this issue moves to Done after the deploy and smoke check pass."
+          .github/scripts/factory-flow.sh status "$ISSUE" "Release approved by $SENDER. Merged PR #$PR as ${sha:0:7}. Agent: Deploying; Done after the deploy and smoke check pass."
 
   # Merges by GITHUB_TOKEN trigger no further workflows (no push, no PR closed),
   # so deploy and cleanup run here as reusable workflow calls.
