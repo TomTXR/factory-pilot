@@ -283,8 +283,12 @@ case "$cmd" in
       esac
     fi
     read_as=""; [ "$explicit" = no ] && read_as="Read as: **$intent** - $summary"$'\n\n'
-    # Follow-up tickets first: they never change the state of this story.
-    [ "$followup" = yes ] && "$0" followups "$issue" "$cid"
+    # Follow-up tickets first: they never change the state of this story, and a
+    # failure there must not stop the rest of the comment.
+    if [ "$followup" = yes ] && ! "$0" followups "$issue" "$cid"; then
+      echo "::warning::follow-ups failed for comment $cid"
+      gh issue comment "$issue" --repo "$R" --body "The follow-up ticket requested in $curl_url could not be created (a GitHub call failed). The rest of the comment is handled. Reply \`/followup <what>\` to try again." >/dev/null || true
+    fi
     case "$state:$intent" in
       inbox:approve|inbox:changes)
         FACTORY_START_APPROVED=1 "$0" start "$issue" >/dev/null
@@ -474,10 +478,15 @@ case "$cmd" in
       rm -rf "$dir"; echo "no follow-up written"; exit 0
     fi
     list=""
+    # Stories of an earlier, interrupted run for this comment are reused, not created again.
+    existing=$(gh api "repos/$R/issues?creator=$BOT&labels=factory:story&state=all&per_page=100" | jq -c '[.[] | {number, body: (.body // "")}]')
     for k in $(seq 0 $((n - 1))); do
       title=$(echo "$res" | jq -r ".stories[$k].title")
+      key="<!-- factory:followup-of $issue comment $cid part $k -->"
+      num=$(echo "$existing" | jq -r --arg key "$key" '[.[] | select(.body | startswith($key)) | .number] | first // empty')
+      if [ -n "$num" ]; then list="$list"$'\n'"- #$num $title"; continue; fi
       {
-        printf '<!-- factory:followup-of %s -->\n' "$issue"
+        printf '%s\n' "$key"
         echo "$res" | jq -r ".stories[$k].body"
         printf '\n---\n_Follow-up of #%s, requested by @%s: %s. Written by the factory from the plan and that comment._\n' "$issue" "$author" "$url"
       } > "$dir/$k.issue"

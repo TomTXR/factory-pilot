@@ -14,7 +14,8 @@ if [ "$1" = "api" ]; then
   path=""; for a in "$@"; do case "$a" in repos/*) path="$a"; break ;; esac; done
   case "$path" in
     */sub_issues*) case "$*" in *"-X POST"*) echo '{}' ;; *) pn=${path%/sub_issues*}; pn=${pn##*/}; cat "$FX/sub_issues-$pn.json" 2>/dev/null || cat "$FX/sub_issues.json" 2>/dev/null || echo '[]' ;; esac ;;
-    */issues) n=$(( $(cat "$FX/next" 2>/dev/null || echo 100) )); echo $((n+1)) > "$FX/next"; echo "{\"number\":$n,\"id\":$((n*1000))}" ;;
+    */issues\?*) cat "$FX/bot_issues.json" 2>/dev/null || echo '[]' ;;
+    */issues) [ -n "${GH_FAIL_CREATE:-}" ] && exit 1; n=$(( $(cat "$FX/next" 2>/dev/null || echo 100) )); echo $((n+1)) > "$FX/next"; echo "{\"number\":$n,\"id\":$((n*1000))}" ;;
     */pulls/*/reviews/*) cat "$FX/review.json" ;;
     */pulls/*/reviews) cat "$FX/reviews.json" ;;
     */pulls\?*) cat "$FX/open_pulls.json" ;;
@@ -45,7 +46,7 @@ setup() { # head_ref review_author review_body
   : > "$GH_LOG"
   jq -n --arg ref "$1" '{state:"open", head:{ref:$ref, sha:"sha1"}}' > "$FX/pull.json"
   jq -n --arg u "$2" --arg b "$3" '{user:{login:$u}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"
-  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/next" "$WORK/out"
+  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/bot_issues.json" "$FX/next" "$WORK/out"
   jq -n '[{number:16, head:{ref:"factory/issue-5"}}, {number:17, head:{ref:"factory/issue-50"}}]' > "$FX/open_pulls.json"
 }
 check() { # name expected(yes|no) pattern
@@ -479,6 +480,22 @@ check "F5 follow-ups of a comment are created once" no "api -X POST repos/owner/
 FOLLOWUP_EMPTY=1 fcmd factory:plan-review "please create a ticket" unclear true
 check "F6 nothing written -> bot says so" yes "No follow-up story could be written"
 check "F6 nothing written -> no issue" no "api -X POST repos/owner/repo/issues "
+
+
+GH_FAIL_CREATE=1 fcmd factory:plan-review "/approve
+/followup shared household access" unclear false
+check "F7 failed follow-up does not block /approve" yes "issue edit 5 .*--add-label factory:plan-approved"
+check "F7 failed follow-up is reported" yes "could not be created"
+
+fcmd_setup_retry() {
+  jq -n '[{number:77, body:"<!-- factory:followup-of 5 comment 900 part 0 -->\n### Story"}]' > "$FX/bot_issues.json"
+}
+setup factory/issue-5 agentbot x; fcmd_setup_retry
+jq -n '{node_id:"I_test", title:"Login", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/followup x", html_url:"https://x/c"}' > "$FX/comment.json"
+"$SCRIPT" followups 5 900 >/dev/null 2>&1
+check "F8 retry reuses the story created before the failure" no "api -X POST repos/owner/repo/issues "
+check "F8 retry lists the existing story" yes "#77 Shared household access"
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
