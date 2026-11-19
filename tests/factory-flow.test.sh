@@ -31,7 +31,7 @@ if [ "$1" = "api" ]; then
     */pulls/*) cat "$FX/pull.json" ;;
     */issues/comments/*) cat "$FX/comment.json" ;;
     */issues/*/comments) cat "$FX/comments.json" ;;
-    */issues/*) if [ -f "$FX/issue-${path##*/}.json" ]; then cat "$FX/issue-${path##*/}.json"; elif [ -f "$FX/issue.json" ]; then cat "$FX/issue.json"; else echo '{"node_id":"I_test","labels":[]}'; fi ;;
+    */issues/*) if [ -n "${STUB_CHANGING:-}" ]; then c=$(( $(cat "$FX/seq" 2>/dev/null || echo 0) + 1 )); echo "$c" > "$FX/seq"; jq --arg t "$c" '.updated_at = $t' "$FX/issue.json"; elif [ -f "$FX/issue-${path##*/}.json" ]; then cat "$FX/issue-${path##*/}.json"; elif [ -f "$FX/issue.json" ]; then cat "$FX/issue.json"; else echo '{"node_id":"I_test","labels":[]}'; fi ;;
     *) echo '{}' ;;
   esac
 fi
@@ -47,7 +47,7 @@ exit 0
 STUB
 chmod +x "$WORK/bin/gh"
 export PATH="$WORK/bin:$PATH" FX="$WORK/fx" GH_LOG="$WORK/gh.log"
-export GITHUB_REPOSITORY=owner/repo FACTORY_AGENT_LOGINS=agentbot PROJECT_TOKEN= PROJECT_LOGIN=x PROJECT_NUMBER=1
+export GITHUB_REPOSITORY=owner/repo FACTORY_AGENT_LOGINS=agentbot PROJECT_TOKEN= PROJECT_LOGIN=x PROJECT_NUMBER=1 STATUS_SETTLE=0
 
 M='<!-- openhands-review-run: abc -->'
 pass=0; fail=0
@@ -55,7 +55,7 @@ setup() { # head_ref review_author review_body
   : > "$GH_LOG"
   jq -n --arg ref "$1" '{state:"open", head:{ref:$ref, sha:"sha1"}}' > "$FX/pull.json"
   jq -n --arg u "$2" --arg b "$3" '{user:{login:$u}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"
-  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/bot_issues.json" "$FX"/blocked_by-*.json "$FX"/blocking-*.json "$FX/reactions.json" "$FX/next" "$WORK/out"
+  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/bot_issues.json" "$FX"/blocked_by-*.json "$FX"/blocking-*.json "$FX/reactions.json" "$FX/seq" "$FX/next" "$WORK/out"
   jq -n '[{number:16, head:{ref:"factory/issue-5"}}, {number:17, head:{ref:"factory/issue-50"}}]' > "$FX/open_pulls.json"
 }
 check() { # name expected(yes|no) pattern
@@ -644,6 +644,38 @@ jq -n '[{number:16, head:{ref:"factory/issue-5"}}]' > "$FX/open_pulls.json"
 "$SCRIPT" review 16 1 >/dev/null 2>&1
 check "Q9 rework with an open PR: no issue comment" no "issue comment 5"
 check "Q9 rework with an open PR: reason on the PR" yes "pr comment 16"
+
+
+# R. Races and retries: no shared state for duplicate protection; status writes verify themselves.
+setup factory/issue-5 agentbot x; splitfx "$SPLIT_PLAN"
+jq -n '{node_id:"I_test", id:5000, labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '[{number:100, id:100000, body:"<!-- factory:child-of 5 part 1 -->\n_Part_"}]' > "$FX/bot_issues.json"
+echo 101 > "$FX/next"; jq -n '{id:100000}' > "$FX/issue-100.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "R1 split rerun reuses the existing part 1" no "title=Sign in with Google"
+check "R1 split rerun creates the missing part 2" yes "title=Own data per account"
+check "R1 part 2 is blocked by the reused part 1" yes "issues/101/dependencies/blocked_by -F issue_id=100000"
+
+setup factory/issue-5 agentbot x; splitfx "$TASK_PLAN"
+jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '[{number:90, id:90000, body:"<!-- factory:human-task-of 5 plan 12 part 1 -->\nsteps"}]' > "$FX/bot_issues.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "R2 task rerun reuses the existing task" no "title=Human task"
+check "R2 task rerun still approves the plan" yes "add-label factory:plan-approved"
+
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_test", body:"story", labels:[]}' > "$FX/issue.json"
+STUB_CHANGING=1 "$SCRIPT" status 5 "busy issue" >/dev/null 2>&1
+check "R3 no write while the issue keeps changing (human edit or another step)" no "-X PATCH"
+
+setup factory/issue-5 agentbot "$M
+🔄 CHANGES REQUESTED"
+jq -n '[{user:{login:"github-actions[bot]"}, body:"<!-- factory:rework -->\nold"}]' > "$FX/comments.json"
+jq -n '[{number:16, head:{ref:"factory/issue-5"}}]' > "$FX/open_pulls.json"
+"$SCRIPT" review 16 1 >/dev/null 2>&1
+check "R4 a rework marked on issue and PR counts once" yes "Changes requested \(rework 2 of 3\)"
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

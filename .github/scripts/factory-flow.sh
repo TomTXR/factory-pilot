@@ -129,32 +129,47 @@ open_tasks() { # story -> open human-task sub-issue numbers
 }
 approver_mentions() { echo "${FACTORY_APPROVERS:-}" | tr ',' '\n' | sed '/^$/d; s/^/@/' | paste -sd' ' -; }
 status() { # issue text [mark]: update the status section at the end of the issue body (edits send no email)
-  local issue="$1" text="$2" mark="${3:-}" f body pre post block hist marks now
+  # Optimistic concurrency: rebuild from a fresh read, skip the write if the issue
+  # changed meanwhile (another step or a human edit), verify the line afterwards.
+  local issue="$1" text="$2" mark="${3:-}" f j t1 body pre post block hist marks now line attempt
   f=$(mktemp)
-  body=$(gh api "repos/$R/issues/$issue" | jq -r '.body // ""' | tr -d '\r')
-  if printf '%s\n' "$body" | grep -qx '<!-- factory:status:start -->'; then
-    pre=$(printf '%s\n' "$body" | sed '/^<!-- factory:status:start -->$/,$d')
-    post=$(printf '%s\n' "$body" | sed '1,/^<!-- factory:status:end -->$/d')
-    block=$(printf '%s\n' "$body" | sed -n '/^<!-- factory:status:start -->$/,/^<!-- factory:status:end -->$/p')
-  else
-    pre="$body"; post=""; block=""
-  fi
-  hist=$(printf '%s\n' "$block" | grep '^- ' | tail -29 || true)
-  marks=$(printf '%s\n' "$block" | grep '^<!-- factory:mark ' || true)
   now=$(date -u +'%Y-%m-%d %H:%M')
-  [ -n "$mark" ] && marks=$(printf '%s\n<!-- factory:mark %s -->' "$marks" "$mark" | sed '/^$/d')
-  text=$(printf '%s' "$text" | tr '\n' ' ')
-  {
-    printf '%s\n\n' "$(printf '%s' "$pre" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
-    printf '<!-- factory:status:start -->\n---\n**Factory status** (%s UTC): %s\n\n<details><summary>History</summary>\n\n' "$now" "$text"
-    [ -n "$hist" ] && printf '%s\n' "$hist"
-    printf -- '- %s %s\n\n</details>\n' "$now" "$text"
-    [ -n "$marks" ] && printf '%s\n' "$marks"
-    printf '<!-- factory:status:end -->\n'
-    [ -n "$post" ] && printf '%s\n' "$post"
-  } > "$f"
-  gh api -X PATCH "repos/$R/issues/$issue" -F body=@"$f" >/dev/null || echo "::warning::status update of #$issue failed"
-  rm -f "$f"
+  text=$(printf '%s' "$text" | tr '\n' ' ' | sed 's/ *$//')
+  line="- $now $text"
+  for attempt in 1 2 3 4 5; do
+    j=$(gh api "repos/$R/issues/$issue"); t1=$(echo "$j" | jq -r '.updated_at // ""')
+    body=$(echo "$j" | jq -r '.body // ""' | tr -d '\r')
+    if printf '%s\n' "$body" | grep -qx '<!-- factory:status:start -->'; then
+      pre=$(printf '%s\n' "$body" | sed '/^<!-- factory:status:start -->$/,$d')
+      post=$(printf '%s\n' "$body" | sed '1,/^<!-- factory:status:end -->$/d')
+      block=$(printf '%s\n' "$body" | sed -n '/^<!-- factory:status:start -->$/,/^<!-- factory:status:end -->$/p')
+    else
+      pre="$body"; post=""; block=""
+    fi
+    hist=$(printf '%s\n' "$block" | grep '^- ' | tail -29 || true)
+    marks=$(printf '%s\n' "$block" | grep '^<!-- factory:mark ' || true)
+    [ -n "$mark" ] && marks=$(printf '%s\n<!-- factory:mark %s -->' "$marks" "$mark" | sed '/^$/d')
+    {
+      printf '%s\n\n' "$(printf '%s' "$pre" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
+      printf '<!-- factory:status:start -->\n---\n**Factory status** (%s UTC): %s\n\n<details><summary>History</summary>\n\n' "$now" "$text"
+      [ -n "$hist" ] && printf '%s\n' "$hist"
+      printf '%s\n\n</details>\n' "$line"
+      [ -n "$marks" ] && printf '%s\n' "$marks"
+      printf '<!-- factory:status:end -->\n'
+      [ -n "$post" ] && printf '%s\n' "$post"
+    } > "$f"
+    if [ "$(gh api "repos/$R/issues/$issue" | jq -r '.updated_at // ""')" = "$t1" ] \
+       && gh api -X PATCH "repos/$R/issues/$issue" -F body=@"$f" >/dev/null; then
+      sleep "${STATUS_SETTLE:-2}"
+      if gh api "repos/$R/issues/$issue" | jq -r '.body // ""' | grep -qxF -- "$line"; then rm -f "$f"; return 0; fi
+    fi
+    sleep "$(( ${STATUS_SETTLE:-2} * attempt ))"
+  done
+  rm -f "$f"; echo "::warning::status update of #$issue failed after 5 attempts: $text"
+}
+find_created() { # first-line key -> "number id" of an issue this automation already created with it
+  [ -n "${BOT_ISSUES:-}" ] || BOT_ISSUES=$(gh api "repos/$R/issues?creator=$BOT&state=all&per_page=100" | jq -c '[.[] | {number, id, body: (.body // "")}]')
+  echo "$BOT_ISSUES" | jq -r --arg key "$1" '[.[] | select(.body | startswith($key))] | if length > 0 then "\(.[0].number) \(.[0].id)" else empty end'
 }
 has_mark() { gh api "repos/$R/issues/$1" | jq -r '.body // ""' | grep -qF "<!-- factory:mark $2 -->"; }
 notify() { # issue text: a human must act; the only bot comments that @mention people
@@ -228,10 +243,13 @@ case "$cmd" in
 
   rework)
     issue="$1"; reason="$2"
-    n=$(bot_comments "$issue" | jq '[.[] | select(contains("<!-- factory:rework -->"))] | length')
+    # Older runs marked a rework on both the issue and the PR; newer ones only on the PR.
+    # The larger of the two counts is the number of reworks.
+    n_issue=$(bot_comments "$issue" | jq '[.[] | select(contains("<!-- factory:rework -->"))] | length'); n_pr=0
     for p in $(gh api "repos/$R/pulls?state=all&per_page=100" | jq -r --arg ref "factory/issue-$issue" '.[] | select(.head.ref == $ref) | .number'); do
-      n=$((n + $(bot_comments "$p" | jq '[.[] | select(contains("<!-- factory:rework -->"))] | length')))
+      n_pr=$((n_pr + $(bot_comments "$p" | jq '[.[] | select(contains("<!-- factory:rework -->"))] | length')))
     done
+    n=$(( n_issue > n_pr ? n_issue : n_pr ))
     if [ "$n" -ge "$MAX_REWORK" ]; then
       for pr in $(open_factory_prs "$issue"); do review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" pending "Blocked: rework limit reached"; done
       set_state "$issue" factory:blocked; board "$issue" Blocked
@@ -513,14 +531,22 @@ case "$cmd" in
   split)
     # Runs only after an approver approved a plan with a "Proposed split" section.
     issue="$1"; author="$2"
-    if bot_comments "$issue" | jq -e 'any(.[]; contains("<!-- factory:split-done -->"))' >/dev/null || has_mark "$issue" split-done; then echo "issue #$issue already split"; exit 0; fi
+    # Old runs left a comment marker; new runs reuse parts found by their key (no shared state to race on).
+    if bot_comments "$issue" | jq -e 'any(.[]; contains("<!-- factory:split-done -->"))' >/dev/null; then echo "issue #$issue already split"; exit 0; fi
     dir=$(mktemp -d); n=$(split_parts "$issue" "$dir")
     [ "$n" -ge 2 ] || { echo "::error::the plan of #$issue proposes no split" >&2; exit 1; }
     prev=""; first=""; list=""
     for k in $(seq 1 "$n"); do
       title=$(head -1 "$dir/$k.title")
+      key="<!-- factory:child-of $issue part $k -->"
+      found=$(find_created "$key")
+      if [ -n "$found" ]; then
+        num="${found%% *}"
+        [ -n "$first" ] || first="$num"
+        list="$list"$'\n'"- #$num $title"; prev="$num"; continue
+      fi
       {
-        printf '<!-- factory:child-of %s -->\n' "$issue"
+        printf '%s\n' "$key"
         printf '_Part %s of %s of #%s (split approved by %s). The parent issue holds the full plan and the answers to its open questions._\n' "$k" "$n" "$issue" "$author"
         if [ -n "$prev" ]; then printf '_Starts when #%s is done._\n' "$prev"; fi
         printf '\n'; cat "$dir/$k.body" 2>/dev/null || true
@@ -538,7 +564,7 @@ case "$cmd" in
     done
     rm -rf "$dir"
     set_state "$issue" factory:split; board "$issue" Split
-    status "$issue" "Split into $n stories:$(echo "$list" | sed 's/^- / /' | paste -sd',' -). #$first starts now with its own plan; each next one starts when the previous one is done. This issue closes when all are closed." split-done
+    status "$issue" "Split into $n stories:$(echo "$list" | sed 's/^- / /' | paste -sd',' -). #$first starts now with its own plan; each next one starts when the previous one is done. This issue closes when all are closed."
     FACTORY_START_APPROVED=1 "$0" start "$first"
     echo "issue #$issue -> split into $n stories, #$first started"
     ;;
@@ -549,12 +575,15 @@ case "$cmd" in
     plan_id=$(gh api "repos/$R/issues/$issue/comments" --paginate | jq -rs --arg agents ",$AGENTS," \
       '[.[][] | (.user.login | ascii_downcase) as $u | select(($agents | ascii_downcase | contains("," + $u + ",")) and (.body | startswith("<!-- factory:breakdown -->")))] | last | .id // empty')
     marker="<!-- factory:tasks-created $plan_id -->"
-    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null || has_mark "$issue" "tasks-created $plan_id"; then echo "tasks of plan $plan_id already created"; exit 0; fi
+    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "tasks of plan $plan_id already created"; exit 0; fi
     dir=$(mktemp -d); n=$(plan_tasks "$issue" "$dir"); list=""
     for k in $(seq 1 "$n"); do
       title=$(head -1 "$dir/$k.title")
+      key="<!-- factory:human-task-of $issue plan $plan_id part $k -->"
+      found=$(find_created "$key")
+      if [ -n "$found" ]; then list="$list"$'\n'"- #${found%% *} $title"; continue; fi
       {
-        printf '<!-- factory:human-task-of %s -->\n' "$issue"
+        printf '%s\n' "$key"
         printf '_Needed by #%s. Only a human can do this. Close this issue when it is done; the release of #%s waits for it._\n\n' "$issue" "$issue"
         cat "$dir/$k.body" 2>/dev/null || true
         printf '\n\n**Never post secret values in issues or comments** (this repository is public). Store them as repository secrets: Settings, Secrets and variables, Actions.\n'
@@ -567,7 +596,7 @@ case "$cmd" in
     done
     rm -rf "$dir"
     # The assignment notifies the assignee; no extra comment.
-    status "$issue" "Human tasks for $assignee (assigned):$(echo "$list" | sed 's/^- / /' | paste -sd',' -). The release waits until all are closed." "tasks-created $plan_id"
+    status "$issue" "Human tasks for $assignee (assigned):$(echo "$list" | sed 's/^- / /' | paste -sd',' -). The release waits until all are closed."
     echo "issue #$issue: $n human task(s) created"
     ;;
 
@@ -575,7 +604,7 @@ case "$cmd" in
     # Only reached from command, i.e. for a comment by an approver.
     issue="$1"; cid="$2"
     marker="<!-- factory:followups $cid -->"
-    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null || has_mark "$issue" "followups $cid"; then echo "follow-ups of comment $cid already handled"; exit 0; fi
+    if bot_comments "$issue" | jq -e --arg m "$marker" 'any(.[]; contains($m))' >/dev/null; then echo "follow-ups of comment $cid already handled"; exit 0; fi
     c=$(gh api "repos/$R/issues/comments/$cid")
     author=$(echo "$c" | jq -r .user.login); url=$(echo "$c" | jq -r .html_url)
     dir=$(mktemp -d)
@@ -590,12 +619,11 @@ case "$cmd" in
     fi
     list=""
     # Stories of an earlier, interrupted run for this comment are reused, not created again.
-    existing=$(gh api "repos/$R/issues?creator=$BOT&labels=factory:story&state=all&per_page=100" | jq -c '[.[] | {number, body: (.body // "")}]')
     for k in $(seq 0 $((n - 1))); do
       title=$(echo "$res" | jq -r ".stories[$k].title")
       key="<!-- factory:followup-of $issue comment $cid part $k -->"
-      num=$(echo "$existing" | jq -r --arg key "$key" '[.[] | select(.body | startswith($key)) | .number] | first // empty')
-      if [ -n "$num" ]; then list="$list"$'\n'"- #$num $title"; continue; fi
+      found=$(find_created "$key")
+      if [ -n "$found" ]; then list="$list"$'\n'"- #${found%% *} $title"; continue; fi
       {
         printf '%s\n' "$key"
         echo "$res" | jq -r ".stories[$k].body"
@@ -611,7 +639,7 @@ case "$cmd" in
       list="$list"$'\n'"- #$num $title"
     done
     rm -rf "$dir"
-    status "$issue" "Follow-up stories created (requested by $author):$(echo "$list" | sed 's/^- / /' | paste -sd',' -). Their planning starts now; each is blocked by this story." "followups $cid"
+    status "$issue" "Follow-up stories created (requested by $author):$(echo "$list" | sed 's/^- / /' | paste -sd',' -). Their planning starts now; each is blocked by this story."
     echo "issue #$issue: $n follow-up(s) created"
     ;;
 
@@ -623,7 +651,7 @@ case "$cmd" in
     part="$1"
     pj=$(gh api "repos/$R/issues/$part")
     [ "$(echo "$pj" | jq -r .user.login)" = "$BOT" ] || { echo "#$part is not a factory part"; exit 0; }
-    parent=$(echo "$pj" | jq -r '.body // ""' | head -1 | sed -nE 's/^<!-- factory:child-of ([0-9]+) -->.*/\1/p')
+    parent=$(echo "$pj" | jq -r '.body // ""' | head -1 | sed -nE 's/^<!-- factory:child-of ([0-9]+)( part [0-9]+)? -->.*/\1/p')
     [ -n "$parent" ] || { echo "#$part is not a factory part"; exit 0; }
     [ "$(gh api "repos/$R/issues/$parent" | jq -r .state)" = open ] || { echo "parent #$parent is already closed"; exit 0; }
     case "$(current_state "$parent")" in cancelled|done) echo "parent #$parent is already $(current_state "$parent")"; exit 0 ;; esac
