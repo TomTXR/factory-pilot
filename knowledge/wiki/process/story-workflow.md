@@ -1,7 +1,7 @@
 # Story Workflow
 
 > Sources: Product owner decisions in the factory spike, 2026-11-19
-> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md)
+> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Comments on human tasks](../../raw/process/2026-11-19-human-task-comments.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -25,7 +25,7 @@ The board columns say who acts next: columns starting with **Human:** wait for a
 | Cancelled | Closed as not planned or duplicate, or `/cancel` | Reopen and `/start` |
 | Waiting | Nobody: plan approved, blocked by open issues | None; starts when blockers are done; `/start` builds anyway |
 | Split | The parts carry the work | None; closes with the parts |
-| Human Task | A human (assigned) | Do the steps, store secrets, close the task |
+| Human Task | A human (assigned) | Do the steps, store secrets, then close the task or comment "done"; comment a question if stuck |
 
 ## Story split
 
@@ -43,6 +43,12 @@ The board columns say who acts next: columns starting with **Human:** wait for a
 - Secret values never go into issues or comments (public repository). They are stored as repository secrets named `PILOT_<NAME>`; production receives them on the next deploy, previews and CI never do.
 - The app works without the secrets where possible (labelled test path) or fails with a clear log line.
 - Cancelling a story closes its open tasks. In a split, each part lists its own tasks.
+- Comments on a task (approvers only):
+  - "Done" (`/done`, or text such as "All done, secrets are stored") closes the task. Closing by hand works too.
+  - A question or a problem gets an answer from an agent that reads the task, the story, the plan and the wiki. It cannot do the task and never asks for secrets.
+  - If the agent cannot answer, the task moves to "Human: Decide (blocked)" and the other approvers are asked to decide.
+  - A remark ("will do this tonight") gets a thumbs-up only. Story commands such as `/approve` do not apply to tasks.
+- Why: anything assigned to a human can be hard, and the human needs a way to say so. Before, a comment on a task reached nobody.
 
 ## Follow-up stories
 

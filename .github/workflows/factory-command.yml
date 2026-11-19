@@ -1,7 +1,8 @@
 name: Factory command
 
 # Humans steer stories with comments: /approve, /changes <text>, /retry, or plain
-# text whose intent is inferred at Plan Review and Human Review. Only approvers
+# text whose intent is inferred at Plan Review and Human Review. On a human task,
+# a comment reports it done or asks a question that an agent answers. Only approvers
 # count, and only their comments reach the classifier (no quota for strangers).
 on:
   issue_comment:
@@ -36,10 +37,9 @@ jobs:
       PROJECT_LOGIN: TomTXR
       PROJECT_NUMBER: "1"
     steps:
+      # Full checkout: the answer agent for human-task questions reads AGENTS.md and the wiki.
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: .github/scripts
-      - name: Install Claude Code CLI (intent classifier)
+      - name: Install Claude Code CLI (intent classifier, task answers)
         run: npm install -g @anthropic-ai/claude-code@2.1.228 --no-audit --no-fund --loglevel=error
       - id: run
         env:

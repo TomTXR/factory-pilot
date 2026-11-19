@@ -26,6 +26,7 @@ Running real stories through the factory showed where the first design broke. Ea
 |--------------|--------|
 | A story was too large for one PR (#28) | The plan proposes a split; approval creates sub-issues built one after another |
 | External setup (Google OAuth client) was only a plan risk (#28) | Human tasks as assigned sub-issues; the release waits for them |
+| A comment on a human task reached nobody; "All done" did not close it, `/approve` would have planned the task (#38) | Task comments: done closes, a question gets an agent answer, else the task is blocked and the other approvers decide |
 | No safe place for credentials in a public repo | Repository secrets `PILOT_<NAME>`, production only, never in comments |
 | Deferred work had to be typed by hand (#28 question 2) | "Please create a ticket" or `/followup`: the factory writes and starts the story |
 | A follow-up could be built before what it needs (#32 needs #28) | GitHub "blocked by"; planning runs, the build waits until blockers are done |
