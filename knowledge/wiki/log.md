@@ -52,3 +52,14 @@ Append-only. Newest entries at the bottom.
 ## [2026-11-19] ingest | Story Workflow
 - Raw: raw/process/2026-11-19-ci-failure-rework.md
 - Updated: Factory Spike Lessons
+
+## [2026-11-19] ingest | Home Maintenance Log
+- Raw: raw/stories/2026-11-19-story-34-google-sign-in.md
+- Updated: Home Owner Persona
+
+## [2026-11-19] ingest | Factory Self-Hosting
+- Raw: raw/process/2026-11-19-factory-self-hosting-idea.md
+- Updated: Story Workflow, Factory Spike Lessons (See Also)
+
+## [2026-11-19] ingest | Factory Self-Hosting
+- Raw: raw/process/2026-11-19-software-factory-hub-idea.md

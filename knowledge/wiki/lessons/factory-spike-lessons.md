@@ -53,3 +53,4 @@ Running real stories through the factory showed where the first design broke. Ea
 ## See Also
 
 - [Story Workflow](../process/story-workflow.md)
+- [Factory Self-Hosting](../process/factory-self-hosting.md)

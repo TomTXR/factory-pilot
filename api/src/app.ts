@@ -1,4 +1,6 @@
 import { Hono } from 'hono';
+import type { AuthDeps } from './auth.js';
+import { createAuth } from './authRoutes.js';
 import { logger } from './logger.js';
 import { isUuid, type PropertyRepository, validateProperty } from './properties.js';
 
@@ -7,6 +9,9 @@ export interface AppDeps {
   checkDb: () => Promise<boolean>;
   properties: PropertyRepository;
   version: string;
+  auth: AuthDeps;
+  /** Clock, replaceable in tests. */
+  now?: () => Date;
 }
 
 const DUPLICATE = { error: 'This property already exists' };
@@ -32,6 +37,13 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   app.get('/version', (c) => c.json({ version: deps.version }));
+
+  const { routes, requireUser } = createAuth(deps.auth, deps.now ?? (() => new Date()));
+  app.route('/auth', routes);
+
+  // Everything below is protected; /health, /version and /auth stay public.
+  app.use('/properties', requireUser);
+  app.use('/properties/*', requireUser);
 
   app.get('/properties', async (c) => c.json(await deps.properties.list()));
 

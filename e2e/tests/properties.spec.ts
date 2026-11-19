@@ -3,7 +3,13 @@ import { expect, type Page, test } from '@playwright/test';
 // The e2e database is shared, so every test uses uniquely named properties and deletes them afterwards.
 let created: string[] = [];
 
-test.afterEach(async ({ request }) => {
+// The API needs a session. page.request shares the cookies of the page, so one test sign-in serves both.
+test.beforeEach(async ({ page }) => {
+  expect((await page.request.post('/api/auth/test-login')).ok()).toBe(true);
+});
+
+test.afterEach(async ({ page }) => {
+  const request = page.request;
   const list = (await (await request.get('/api/properties')).json()) as { id: string; ownerName: string }[];
   for (const p of list) {
     if (created.some((owner) => p.ownerName.startsWith(owner))) await request.delete(`/api/properties/${p.id}`);

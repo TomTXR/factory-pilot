@@ -8,7 +8,7 @@ What the app is, its scope and requirements.
 
 | Article | Summary | Updated |
 |---------|---------|---------|
-| [Home Maintenance Log](product/home-maintenance-log.md) | Product scope v1: data model, property rules, requirements, out of scope (SYNTHETIC) | 2026-11-18 |
+| [Home Maintenance Log](product/home-maintenance-log.md) | Product scope v1: data model, property rules, Google sign-in, requirements, out of scope (SYNTHETIC) | 2026-11-19 |
 
 ## domain
 
@@ -24,7 +24,7 @@ Who uses the app and what they need.
 
 | Article | Summary | Updated |
 |---------|---------|---------|
-| [Home Owner Persona](users/home-owner.md) | Mobile logging on site, yearly totals, no login, EUR only (SYNTHETIC) | 2026-11-17 |
+| [Home Owner Persona](users/home-owner.md) | Mobile logging on site, yearly totals, Google sign-in decision, EUR only (SYNTHETIC) | 2026-11-19 |
 
 ## process
 
@@ -33,6 +33,7 @@ How work moves through the software factory.
 | Article | Summary | Updated |
 |---------|---------|---------|
 | [Story Workflow](process/story-workflow.md) | Stages, human commands at the two gates, cancel, story split into sub-issues, human tasks, task comments and app secrets, follow-up stories, dependencies, quiet notifications, story owners | 2026-11-19 |
+| [Factory Self-Hosting](process/factory-self-hosting.md) | Idea, not decided: the factory develops itself; why it fits, safeguards (lockout, rights, testing, watchdog), a software factory hub as the central entry point, suggested order | 2026-11-19 |
 
 ## lessons
 

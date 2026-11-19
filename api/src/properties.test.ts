@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
-import { memoryRepository } from './testing.js';
+import { memoryRepository, testAuth } from './testing.js';
 
 const valid = {
   street: 'Teststraat',
@@ -11,13 +11,19 @@ const valid = {
 };
 
 function setup() {
-  const app = createApp({ checkDb: async () => true, properties: memoryRepository(), version: 'test' });
-  const send = (method: string, path: string, body?: unknown) =>
-    app.request(`/api/properties${path}`, {
+  const app = createApp({ checkDb: async () => true, properties: memoryRepository(), version: 'test', auth: testAuth() });
+  let cookie = '';
+  const signedIn = Promise.resolve(app.request('/api/auth/test-login', { method: 'POST' })).then((res) => {
+    cookie = (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+  });
+  const send = async (method: string, path: string, body?: unknown) => {
+    await signedIn;
+    return app.request(`/api/properties${path}`, {
       method,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', cookie },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
+  };
   return { send };
 }
 

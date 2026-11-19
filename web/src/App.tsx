@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  ApiError,
   type ApiStatus,
   createPropertiesApi,
   fetchHealth,
@@ -7,6 +8,7 @@ import {
   type Property,
   type PropertiesApi,
   type PropertyFormValues,
+  type User,
 } from './api';
 import { ConfirmDeleteDialog } from './components/ConfirmDeleteDialog';
 import { EmptyState } from './components/EmptyState';
@@ -48,10 +50,17 @@ export function App({
   loadHealth = fetchHealth,
   loadVersion = fetchVersion,
   api = defaultApi,
+  user,
+  onSignOut,
+  onUnauthorized,
 }: {
   loadHealth?: () => Promise<ApiStatus>;
   loadVersion?: () => Promise<string | null>;
   api?: PropertiesApi;
+  user?: User;
+  onSignOut?: () => void | Promise<void>;
+  /** Called when the API answers 401, so the caller can show the login screen. */
+  onUnauthorized?: () => void;
 }) {
   const [status, setStatus] = useState<ApiStatus>('loading');
   const [version, setVersion] = useState<string | null | undefined>(undefined);
@@ -62,6 +71,14 @@ export function App({
   const [deleting, setDeleting] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+
+  const checkUnauthorized = useCallback(
+    (err: unknown) => {
+      if (err instanceof ApiError && err.unauthorized) onUnauthorized?.();
+    },
+    [onUnauthorized],
+  );
 
   useEffect(() => {
     let active = true;
@@ -99,10 +116,11 @@ export function App({
         return next;
       });
       setLoad('ready');
-    } catch {
+    } catch (err) {
+      checkUnauthorized(err);
       setLoad('error');
     }
-  }, [api]);
+  }, [api, checkUnauthorized]);
 
   useEffect(() => {
     void reload();
@@ -111,6 +129,15 @@ export function App({
   const selected = properties.find((p) => p.id === selectedId) ?? null;
 
   async function save(values: PropertyFormValues) {
+    try {
+      await persist(values);
+    } catch (err) {
+      checkUnauthorized(err);
+      throw err;
+    }
+  }
+
+  async function persist(values: PropertyFormValues) {
     if (mode === 'edit' && selected) {
       const updated = await api.update(selected.id, values);
       setProperties((list) => list.map((p) => (p.id === updated.id ? updated : p)));
@@ -133,7 +160,8 @@ export function App({
       setProperties(remaining);
       select(remaining[0]?.id ?? null);
       setDeleting(false);
-    } catch {
+    } catch (err) {
+      checkUnauthorized(err);
       setDeleteError('Deleting failed. Please try again.');
     } finally {
       setDeleteBusy(false);
@@ -206,9 +234,29 @@ export function App({
     <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-slate-900">Home Maintenance Log</h1>
-        <span data-testid="api-status" className={`rounded px-2 py-1 text-sm ${statusStyle[status]}`}>
-          API: {status}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span data-testid="api-status" className={`rounded px-2 py-1 text-sm ${statusStyle[status]}`}>
+            API: {status}
+          </span>
+          {user && onSignOut && (
+            <>
+              <span data-testid="signed-in-user" className="max-w-40 truncate text-sm text-slate-700">
+                {user.name}
+              </span>
+              <button
+                type="button"
+                disabled={signingOut}
+                onClick={() => {
+                  setSigningOut(true);
+                  void Promise.resolve(onSignOut()).finally(() => setSigningOut(false));
+                }}
+                className="btn-secondary"
+              >
+                Sign out
+              </button>
+            </>
+          )}
+        </div>
       </header>
       <div className="mt-8">{renderMain()}</div>
       {deleting && selected && (
