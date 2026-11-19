@@ -41,4 +41,4 @@ What the project learned and why its rules exist.
 
 | Article | Summary | Updated |
 |---------|---------|---------|
-| [Factory Spike Lessons](lessons/factory-spike-lessons.md) | Tweaks from running real stories through the factory: comment control, split, human tasks, secrets, follow-ups, dependencies, GitHub specifics | 2026-11-19 |
+| [Factory Spike Lessons](lessons/factory-spike-lessons.md) | Tweaks from running real stories through the factory: comment control, split, human tasks, secrets, follow-ups, dependencies, plan review, GitHub specifics | 2026-11-19 |

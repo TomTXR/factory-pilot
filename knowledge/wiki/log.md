@@ -63,3 +63,6 @@ Append-only. Newest entries at the bottom.
 
 ## [2026-11-19] ingest | Factory Self-Hosting
 - Raw: raw/process/2026-11-19-software-factory-hub-idea.md
+
+## [2026-11-19] ingest | Factory Spike Lessons
+- Raw: raw/lessons/2026-11-19-plan-criteria-for-nonexistent-data.md
