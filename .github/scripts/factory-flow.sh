@@ -550,7 +550,13 @@ case "$cmd" in
         echo "$tj" | jq -r '"# " + .title + "\n\n" + (.body // "")' > "$d/task"
         : > "$d/story"; : > "$d/plan"
         if [ -n "$parent" ]; then
-          gh api "repos/$R/issues/$parent" | jq -r '"# #" + (.number|tostring) + " " + .title + "\n\n" + (.body // "")' > "$d/story"
+          # The story body only when an approver or this automation wrote it (anyone can open a story).
+          pj=$(gh api "repos/$R/issues/$parent"); pa=$(echo "$pj" | jq -r .user.login)
+          if is_approver "$pa" || [ "$pa" = "$BOT" ]; then
+            echo "$pj" | jq -r '"# #" + (.number|tostring) + " " + .title + "\n\n" + (.body // "")' > "$d/story"
+          else
+            echo "$pj" | jq -r '"# #" + (.number|tostring) + " " + .title + "\n\n(story text omitted: written by a non-approver)"' > "$d/story"
+          fi
           plan_body "$parent" > "$d/plan"
         fi
         # Thread: approvers and this automation only (public repository: anyone can comment).
@@ -560,6 +566,11 @@ case "$cmd" in
         done > "$d/thread" || true
         res=$("$here/answer-task.sh" "$d/task" "$d/story" "$d/plan" "$d/thread" 2>/dev/null) || true
         echo "$res" | jq -e 'type == "object"' >/dev/null 2>&1 || res='{"answered":false,"reason":"the answer agent failed"}'
+        # Last line of defence: never post anything that looks like a token.
+        if echo "$res" | jq -r '.answer // ""' | grep -qE '(gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|GOCSPX-[A-Za-z0-9_-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY)'; then
+          echo "::warning::answer for task #$issue looked like it contained a credential; not posted"
+          res='{"answered":false,"reason":"the answer was withheld because it looked like it contained a credential"}'
+        fi
         rm -rf "$d"
         if [ "$(echo "$res" | jq -r '.answered // false')" = true ]; then
           if echo "$tj" | jq -e '[.labels[].name] | index("factory:blocked")' >/dev/null; then

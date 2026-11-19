@@ -38,7 +38,10 @@ jobs:
       PROJECT_NUMBER: "1"
     steps:
       # Full checkout: the answer agent for human-task questions reads AGENTS.md and the wiki.
+      # No persisted token: git is not used after checkout (gh uses GH_TOKEN).
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - name: Install Claude Code CLI (intent classifier, task answers)
         run: npm install -g @anthropic-ai/claude-code@2.1.228 --no-audit --no-fund --loglevel=error
       - id: run

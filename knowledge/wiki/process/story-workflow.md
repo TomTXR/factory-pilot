@@ -49,6 +49,7 @@ The board columns say who acts next: columns starting with **Human:** wait for a
   - If the agent cannot answer, the task moves to "Human: Decide (blocked)" and the other approvers are asked to decide.
   - A remark ("will do this tonight") gets a thumbs-up only. Story commands such as `/approve` do not apply to tasks.
 - Why: anything assigned to a human can be hard, and the human needs a way to say so. Before, a comment on a task reached nobody.
+- The answer agent is contained, because its prompt can hold text from a non-approver: no token in the checkout or its environment, read-only tools limited to a copy of the repository, no story text from non-approvers, and no answer that looks like a credential is posted.
 
 ## Follow-up stories
 

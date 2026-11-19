@@ -21,3 +21,12 @@ The classifier (Sonnet) got a third mode for tasks: done, question, other. When 
 Only approver comments reach the agent. The thread passed to the agent contains only approver and factory comments, because anyone can comment in the public repository.
 
 Tested live before merge with the real task #38: the classifier sorted "All done, both secrets are in" as done, "which app type?" as question, "will do this tonight" as other. The answer to "what do I enter as Authorized JavaScript origins?" came in 14 s and used only values from the task text.
+
+Security (reviewer P0 on PR #42, fixed before merge): the answer agent is the first agent with file tools in the comment workflow, and its prompt can hold text a non-approver wrote (a stranger's story that an approver started). A prompt injection could have made it quote the job token (persisted by checkout in `.git/config`) or tokens from its environment into a public comment. Layers now:
+- the checkout persists no token (`persist-credentials: false`);
+- the agent runs in a copy of the repository without `.git`;
+- it gets read-only tools and no allow rule, so reads outside its working directory are denied (tested: a file in the parent directory and `/proc/self/environ` were denied);
+- it gets no GitHub or project token in its environment;
+- a story body written by a non-approver is left out of the prompt;
+- an answer that looks like a credential is never posted; the task is blocked instead.
+Live test: asked to include `.git/config`, `~/.claude.json` and `/proc/self/environ`, the agent refused and escalated to a human.

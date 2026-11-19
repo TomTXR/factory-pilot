@@ -42,8 +42,15 @@ $(cat "$plan_file")
 $(cat "$thread_file")
 </thread>"
 
-out=$(printf '%s' "$prompt" | claude -p --model "${ANSWER_MODEL:-opus}" --effort medium \
-  --tools "Read,Grep,Glob" --allowedTools "Read,Grep,Glob" \
+# Containment (the prompt holds text that a non-approver may have written):
+#   - the agent runs in a copy of the repository without .git (no persisted token);
+#   - read-only tools and no allow rule: reads outside the working directory are denied;
+#   - only the subscription token is passed on, no GitHub or project token.
+repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+sandbox=$(mktemp -d); trap 'rm -rf "$sandbox"' EXIT
+tar -C "$repo_root" --exclude=.git -cf - . | tar -C "$sandbox" -xf -
+out=$(cd "$sandbox" && printf '%s' "$prompt" | env -u GH_TOKEN -u GITHUB_TOKEN -u PROJECT_TOKEN \
+  claude -p --model "${ANSWER_MODEL:-opus}" --effort medium --tools "Read,Grep,Glob" \
   --output-format json --json-schema "$schema" 2>/dev/null) || { echo "$fallback"; exit 0; }
 echo "$out" | jq -c --argjson fb "$fallback" '(.structured_output // (.result | fromjson?) // $fb)
   | if (.answered == true and ((.answer // "") | length) > 0) then {answered: true, answer, reason: (.reason // "")}

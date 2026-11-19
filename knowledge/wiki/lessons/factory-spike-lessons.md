@@ -35,7 +35,7 @@ Running real stories through the factory showed where the first design broke. Ea
 
 - Plans decide quality: breakdown and review run on Opus, code on Sonnet, all at effort medium.
 - Agents act as a machine account, never as a human. Reviews and factory markers count only from that account or the automation; forged approvals were a P0.
-- The reviewer agent found a real defect in almost every factory change. Every change goes through it, with a test that fails without the fix.
+- The reviewer agent found a real defect in almost every factory change. Example: the first agent with file tools in a comment workflow could have been tricked into posting a token (PR #42); every such agent now runs without tokens, in a copy without `.git`. Every change goes through it, with a test that fails without the fix.
 - Merge conflicts on factory branches go back to the builder automatically.
 
 ## GitHub specifics
