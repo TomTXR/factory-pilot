@@ -47,7 +47,7 @@ Running real stories through the factory showed where the first design broke. Ea
 - Each workflow step has its own `GITHUB_OUTPUT` file.
 - The reviewer template does not review a PR with red required checks and says nothing. A failed CI run on a factory PR must go back to the builder, or the story waits forever (#34, PR #39).
 - jq's `//` treats `false` as missing: `.mergeable // empty` never reports a conflict.
-- `gh pr comment --edit-last` edits the newest comment of the account, not a specific one. All factory comments share one account, so it overwrote a rework request and reset the rework count (PR #45). Update comments only by their own marker.
+- `gh pr comment --edit-last` edits the newest comment of the account, not a specific one. All factory comments share one account, so it overwrote a rework request and reset the rework count (PR #45). Update comments only by their own marker ([source](../../raw/process/2026-11-19-preview-comment-edit-last.md)).
 - GitHub runs no `pull_request` workflows on a PR with a merge conflict, and `mergeable` is `null` until computed. Conflicts must be checked on `push` (main and factory branches), polling until GitHub reports true or false.
 
 ## See Also
