@@ -75,11 +75,18 @@ jobs:
           KNOWN_HOSTS: ${{ secrets.FACTORY_KNOWN_HOSTS }}
           FACTORY_IP: ${{ vars.FACTORY_IP }}
           ARGS: ${{ steps.target.outputs.args }}
+          # App secrets: repository secrets named PILOT_<NAME>, production only.
+          # Previews and CI never get them (the app must work there without).
+          APP_SECRETS: ${{ inputs.kind == 'prod' && toJSON(secrets) || '{}' }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          ssh -i ~/.ssh/deploy_key "deploy@$FACTORY_IP" "$ARGS"
+          # Secrets go over stdin as NAME=value lines (single-line values only), never as arguments.
+          printf '%s' "$APP_SECRETS" | jq -r 'to_entries[] | select((.key | test("^PILOT_[A-Z0-9_]+$")) and (.value | test("\n") | not)) | "\(.key)=\(.value)"' > app.env
+          echo "app secrets passed: $(cut -d= -f1 app.env | paste -sd' ' -)"
+          ssh -i ~/.ssh/deploy_key "deploy@$FACTORY_IP" "$ARGS" < app.env
+          rm -f app.env
 
       - name: Smoke check
         env:

@@ -378,5 +378,58 @@ jq -n '[{number:61, state:"open"}, {number:62, state:"open"}]' > "$FX/sub_issues
 "$SCRIPT" child-closed 70 >/dev/null 2>&1
 check "P9 nested: grandparent's next part starts" yes "issue edit 62 .*--add-label factory:breakdown"
 
+
+# H. Human tasks: an approved plan with "Human tasks" creates assigned sub-issues; the release waits for them.
+TASK_PLAN='<!-- factory:breakdown -->
+## Summary
+Login.
+## Human tasks
+<!-- factory:human-tasks -->
+### Task 1: Create the Google OAuth client
+1. Open the Google Cloud console.
+2. Store the secrets PILOT_GOOGLE_CLIENT_ID and PILOT_GOOGLE_CLIENT_SECRET.
+## Open questions
+None'
+setup factory/issue-5 agentbot x; splitfx "$TASK_PLAN"
+jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "H1 creates the human task" yes "api -X POST repos/owner/repo/issues -f title=Human task: Create the Google OAuth client .*labels\[\]=factory:human-task -f assignees\[\]=alice"
+check "H1 links the task as sub-issue" yes "issues/5/sub_issues -F sub_issue_id=100000"
+check "H1 story still goes to the builder" yes "issue edit 5 .*--add-label factory:plan-approved"
+check "H1 task is not a story" no "labels\[\]=factory:story"
+
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:human-review"}]}' > "$FX/issue-5.json"
+jq -n '[{number:90, state:"open", labels:[{name:"factory:human-task"}]}]' > "$FX/sub_issues-5.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "H2 release on hold while a task is open" yes "Release on hold.*#90"
+if grep -q '^land=true' "$WORK/out" 2>/dev/null; then fail=$((fail+1)); echo "FAIL H2 must not land"; else pass=$((pass+1)); echo "ok   H2 does not land"; fi
+
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:human-review"}]}' > "$FX/issue-5.json"
+jq -n '[{number:90, state:"closed", state_reason:"completed", labels:[{name:"factory:human-task"}]}]' > "$FX/sub_issues-5.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+if grep -q '^land=true' "$WORK/out" 2>/dev/null; then pass=$((pass+1)); echo "ok   H3 lands when all tasks are closed"; else fail=$((fail+1)); echo "FAIL H3 should land"; fi
+
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:in-progress"}]}' > "$FX/issue-5.json"
+jq -n '[{number:90, state:"open", labels:[{name:"factory:human-task"}]}]' > "$FX/sub_issues-5.json"
+"$SCRIPT" closed 5 not_planned >/dev/null 2>&1
+check "H4 cancelled story closes its open tasks" yes "issue close 90 --repo owner/repo --reason not planned"
+
+setup factory/issue-5 agentbot x; partfx 101 completed
+jq -n '[{number:100, state:"closed", state_reason:"completed"}, {number:101, state:"closed", state_reason:"completed"}, {number:91, state:"open", labels:[{name:"factory:human-task"}]}]' > "$FX/sub_issues.json"
+"$SCRIPT" child-closed 101 >/dev/null 2>&1
+check "H5 open human tasks do not count as open parts" yes "issue close 5 --repo owner/repo --reason completed"
+
+setup factory/issue-5 agentbot x; splitfx "${TASK_PLAN/<!-- factory:human-tasks -->/}"
+jq -n '{node_id:"I_test", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "H6 tasks section without marker creates nothing" no "api -X POST repos/owner/repo/issues "
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

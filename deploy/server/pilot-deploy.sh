@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Forced command for the CI deploy key on the factory VM (user "deploy").
 # Accepted commands (via SSH_ORIGINAL_COMMAND):
-#   deploy prod <sha>
+#   deploy prod <sha>       stdin: app secrets as PILOT_<NAME>=value lines (may be empty)
 #   deploy pr <number> <sha>
 #   destroy pr <number>
 #   status
@@ -59,6 +59,21 @@ git -C "$dir" checkout --quiet --force "$sha"
 
 if [ ! -f "$envfile" ]; then
   ( umask 077; printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > "$envfile" )
+fi
+
+if [ "$project" = "pilot-prod" ]; then
+  # Replace the app secrets with the set sent by CI: only PILOT_<NAME>, values
+  # single-quoted so that sourcing the file never executes anything.
+  secrets=$(timeout 10 cat || true)
+  ( umask 077
+    grep -v '^PILOT_' "$envfile" > "$envfile.new" || true
+    printf '%s\n' "$secrets" | while IFS= read -r line; do
+      [[ "$line" =~ ^(PILOT_[A-Z0-9_]+)=(.*)$ ]] || continue
+      q="'"; val="${BASH_REMATCH[2]}"
+      printf '%s=%s%s%s\n' "${BASH_REMATCH[1]}" "$q" "${val//$q/$q\\$q$q}" "$q"
+    done >> "$envfile.new"
+    mv "$envfile.new" "$envfile" )
+  log info "app secrets: $(grep -c '^PILOT_' "$envfile" || true)"
 fi
 set -a; . "$envfile"; set +a
 
