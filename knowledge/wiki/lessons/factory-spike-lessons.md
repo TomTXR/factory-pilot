@@ -1,7 +1,7 @@
 # Factory Spike Lessons
 
 > Sources: Spike 0 log and decisions, 2026-11-17 to 2026-11-19; product owner decisions on stories #25, #28, #32
-> Raw: [Blocked as a gate](../../raw/process/2026-11-19-blocked-as-gate.md); [Release branch update](../../raw/process/2026-11-19-release-branch-update.md); [Silent stalls and the watchdog](../../raw/process/2026-11-19-silent-stalls-watchdog.md); [Plan criterion for non-existing data](../../raw/lessons/2026-11-19-plan-criteria-for-nonexistent-data.md); [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
+> Raw: [Story as test bench](../../raw/lessons/2026-11-19-story-as-test-bench.md); [Blocked as a gate](../../raw/process/2026-11-19-blocked-as-gate.md); [Release branch update](../../raw/process/2026-11-19-release-branch-update.md); [Silent stalls and the watchdog](../../raw/process/2026-11-19-silent-stalls-watchdog.md); [Plan criterion for non-existing data](../../raw/lessons/2026-11-19-plan-criteria-for-nonexistent-data.md); [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -45,6 +45,7 @@ Running real stories through the factory showed where the first design broke. Ea
 | The release updated a PR as the workflow token; GitHub held its CI like an outside contributor's (#35) | Do what a human would: update as the machine account (a collaborator). Ask "would a human have had this problem?" before building machinery: here it led to a fix with standard flows instead of a custom merge queue |
 | A plan named a dependency and asked the human to set it in the GitHub UI (#46) | Plans list dependencies in a section the factory executes. Plans never ask for manual GitHub changes |
 | A fix wrote a mark through a subcommand that dropped the argument; the test checked only the workflow text (PR #51) | Test the effect, not the wiring |
+| #35's approved code waited about three hours while four new factory fixes were tried on its release, each failing on a new edge case; factory merges kept putting its PR behind main | Ship a ready story through a known-good path (a collaborator's "Update branch", review, `/approve`); hold factory merges during a release; test new factory code on the next story. Use least-privilege documented APIs (the CLI's update-branch needed `repo` scope for fields it does not use) |
 | The human followed an old block notice (`/retry`) while the operator's correction (`/approve`) existed only in the chat; `/retry` sent an approved release back to the builder, which found nothing to change (#35) | Blocked is a gate with free text; the factory maps "go on" to the action by the block reason. One rule for humans: exact commands only for the production decision. Corrections always go into the issue |
 
 ## Agents and quality
