@@ -77,3 +77,7 @@ Append-only. Newest entries at the bottom.
 
 ## [2026-11-19] ingest | Factory Self-Hosting
 - Raw: raw/process/2026-11-19-publish-as-guide-idea.md
+
+## [2026-11-19] ingest | Story Workflow
+- Raw: raw/process/2026-11-19-blocked-as-gate.md
+- Updated: Factory Spike Lessons
