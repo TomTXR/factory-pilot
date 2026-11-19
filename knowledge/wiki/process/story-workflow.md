@@ -1,7 +1,7 @@
 # Story Workflow
 
 > Sources: Product owner decisions in the factory spike, 2026-11-19
-> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
+> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -51,6 +51,16 @@ The board columns say who acts next: columns starting with **Human:** wait for a
 - The ticket writer (Opus) writes one story per request from the story, the plan and the comment, in the template sections. Undecided points become open questions; nothing is invented.
 - The factory creates the story with a link to the original story and comment, marks it as blocked by the original story, and starts its breakdown at once. Nothing is built before its plan is approved.
 - Only an explicit request creates a ticket: "later" or "not now" alone does not.
+
+## Notifications (quiet mode)
+
+Humans get an email only when they must act. Why: GitHub emails every participant, including the issue author, about every new comment, but not about edits or reactions.
+
+- Progress is in the **Factory status** section at the end of each story (edited in place, with a collapsed history). Read it there or on the board; it sends no email.
+- A handled comment gets a reaction: thumbs up = done (see the status), eyes = the factory asked you something in a reply.
+- New bot comments exist only for actions and always mention the approvers: plan ready (part of the agent's plan comment), test request, blocked, decisions about cancelled blockers or parts. Human tasks notify by assignment.
+- Info texts name people without `@`.
+- Set the repository watch to "Participating and @mentions" once, so agent PRs, reviews and CI send no email.
 
 ## Dependencies
 
