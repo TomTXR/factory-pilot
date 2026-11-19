@@ -32,3 +32,7 @@ Append-only. Newest entries at the bottom.
 ## [2026-11-19] ingest | Factory Spike Lessons
 - Raw: raw/lessons/2026-11-19-factory-spike-lessons.md
 - Updated: Story Workflow
+
+## [2026-11-19] ingest | Factory Spike Lessons
+- Raw: raw/lessons/2026-11-19-board-column-names.md
+- Updated: Story Workflow
