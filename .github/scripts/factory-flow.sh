@@ -20,6 +20,8 @@
 #   factory-flow.sh ready-check <pr>         preview deployed: ready for human?
 #   factory-flow.sh ci-failed <pr> <run> <sha>  CI failed on a factory PR: send it back to the builder
 #   factory-flow.sh conflicts [pr...]        after a push: send conflicting factory PRs back to the builder
+#   factory-flow.sh agent-blocked <issue>    an agent set factory:blocked with a reason: notify the owners
+#   factory-flow.sh watchdog                 scheduled: block stories whose agent step made no progress in time
 #   factory-flow.sh plan-ready <issue>       breakdown posted a plan: notify approvers
 #   factory-flow.sh start <issue>            new story: start the breakdown
 #   factory-flow.sh command <issue> <id>     a comment by a human on a story issue (or a human task)
@@ -32,7 +34,7 @@
 #                                            part, or close the parent when all parts are closed
 #   factory-flow.sh create-tasks <issue> <assignee>  approved plan lists human tasks: create them
 #   factory-flow.sh unblock <issue>          <issue> was closed: start waiting stories it blocked
-#   factory-flow.sh status <issue> <text>    record progress in the story's status section (no email)
+#   factory-flow.sh status <issue> <text> [mark]  record progress in the story's status section (no email)
 #   factory-flow.sh notify <issue> <text>    ask the approvers to act: comment with @mentions (email)
 #
 # Quiet mode: GitHub emails every participant about every new comment, but not
@@ -136,6 +138,17 @@ blockers() { # issue -> JSON array of the issues it is blocked by (number, state
   gh api "repos/$R/issues/$1/dependencies/blocked_by?per_page=100" | jq -c '[.[] | {number, state, state_reason}]'
 }
 open_blockers() { blockers "$1" | jq -r '.[] | select(.state == "open") | .number'; }
+state_before_block() { # issue -> the factory state the story was in when factory:blocked was last added
+  gh api "repos/$R/issues/$1/events?per_page=100" --paginate | jq -rs '
+    [.[][] | select(.event == "labeled" and (.label.name | startswith("factory:")))] as $ev
+    | ([$ev | to_entries[] | select(.value.label.name == "factory:blocked") | .key] | last) as $b
+    | if $b == null then "" else
+        ([$ev[0:$b][] | .label.name | select(. != "factory:blocked" and . != "factory:story")] | last // "" | sub("^factory:"; ""))
+      end'
+}
+plan_depends() { # issue -> issue numbers listed in the plan's "Dependencies" section (marker <!-- factory:depends-on -->)
+  plan_body "$1" | sed -n '/^<!-- factory:depends-on -->$/,/^## /p' | grep -oE '#[0-9]+' | tr -d '#' | grep -vx "$1" | sort -un || true
+}
 add_blocker() { # issue blocker: <issue> is blocked by <blocker>
   local bid; bid=$(gh api "repos/$R/issues/$2" | jq -r .id)
   gh api -X POST "repos/$R/issues/$1/dependencies/blocked_by" -F issue_id="$bid" >/dev/null || echo "::warning::could not mark #$1 as blocked by #$2"
@@ -245,6 +258,9 @@ case "$cmd" in
         emit "cleanup_pr=$pr"
         echo "issue #$issue is cancelled: closed PR #$pr"; exit 0 ;;
       done) echo "issue #$issue is done: no state change"; exit 0 ;;
+      # The release brings the branch up to date (a merge of main, as a human's
+      # "Update branch"): that push is part of the release, not new work.
+      approved-for-production|deploying) echo "issue #$issue is being released: no state change"; exit 0 ;;
     esac
     gh pr edit "$pr" --repo "$R" --add-label factory:agent-review >/dev/null
     set_state "$issue" factory:agent-review; board "$issue" "Agent Review"
@@ -255,6 +271,7 @@ case "$cmd" in
   review)
     pr="$1"; rid="$2"; issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || { echo "not a factory PR"; exit 0; }
     case "$(current_state "$issue")" in cancelled|done) echo "issue #$issue is closed: ignored"; exit 0 ;; esac
+    case "$(current_state "$issue")" in approved-for-production|deploying) echo "issue #$issue is being released: review ignored"; exit 0 ;; esac
     review=$(gh api "repos/$R/pulls/$pr/reviews/$rid")
     author=$(echo "$review" | jq -r .user.login); body=$(echo "$review" | jq -r .body); url=$(echo "$review" | jq -r .html_url)
     if ! is_agent "$author" || ! printf '%s' "$body" | grep -qF "$REVIEW_MARKER"; then
@@ -357,9 +374,65 @@ case "$cmd" in
     done
     ;;
 
+  agent-blocked)
+    # An agent (for example the builder) stopped on purpose and set factory:blocked
+    # with a comment that says why (AGENTS.md). Make it a proper block and ask the owners.
+    issue="$1"
+    case "$(current_state "$issue")" in cancelled|done) exit 0 ;; esac
+    set_state "$issue" factory:blocked; board "$issue" Blocked
+    url=$(gh api "repos/$R/issues/$issue/comments" --paginate | jq -rs --arg agents ",$AGENTS," \
+      '[.[][] | (.user.login | ascii_downcase) as $u | select($agents | ascii_downcase | contains("," + $u + ","))] | last | .html_url // ""')
+    status "$issue" "Blocked: an agent stopped and explained why${url:+ ($url)}."
+    notify "$issue" "**Blocked:** an agent stopped working on this story and explained why${url:+: $url}. Answer there, then reply \`/retry\` to restart the step (it reads this thread)."
+    echo "issue #$issue -> blocked by an agent"
+    ;;
+
+  watchdog)
+    # Safety net for silent stalls: an agent step that makes no progress within its
+    # time limit is blocked and the owners are told, once per entry into the state.
+    # Progress means the state label changed (every agent step ends by changing it).
+    now="${WATCHDOG_NOW:-$(date -u +%s)}"
+    for issue in $(gh api "repos/$R/issues?labels=factory:story&state=open&per_page=100" | jq -r '.[] | select(.pull_request | not) | .number'); do
+      st=$(current_state "$issue")
+      case "$st" in
+        breakdown) limit=30; step="Agent: Planning" ;;
+        plan-approved|in-progress) limit=60; step="Agent: Building" ;;
+        agent-review) limit=60; step="Agent: Reviewing" ;;
+        rework) limit=60; step="Agent: Reworking" ;;
+        approved-for-production|deploying) limit=45; step="Agent: Deploying" ;;
+        *) continue ;;
+      esac
+      ev=$(gh api "repos/$R/issues/$issue/events?per_page=100" --paginate | jq -s -c --arg l "factory:$st" '[.[][] | select(.event == "labeled" and .label.name == $l)] | last // empty')
+      [ -n "$ev" ] || continue
+      evid=$(echo "$ev" | jq -r .id); since=$(echo "$ev" | jq -r .created_at)
+      age=$(( (now - $(date -u -d "$since" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$since" +%s)) / 60 ))
+      [ "$age" -ge "$limit" ] || { echo "#$issue $st for ${age} min (limit $limit)"; continue; }
+      has_mark "$issue" "stalled $evid" && { echo "#$issue already reported"; continue; }
+      hint="Reply \`/retry\` to restart the step."
+      extra=""
+      if [ "$st" = approved-for-production ] || [ "$st" = deploying ]; then
+        pr=$(open_factory_prs "$issue" | head -1)
+        if [ -n "$pr" ]; then
+          extra="release-blocked $pr $(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)"
+          hint="Check the release run, then reply \`/approve\` to try the release again."
+        else
+          hint="The PR is already merged: check the deploy run and production, then close the story by hand if it is live."
+        fi
+      fi
+      set_state "$issue" factory:blocked; board "$issue" Blocked
+      status "$issue" "Watchdog: no progress in $step for $age minutes (limit $limit)." "stalled $evid"
+      [ -n "$extra" ] && status "$issue" "Release can be retried with /approve." "$extra"
+      notify "$issue" "**Blocked (watchdog):** no progress in **$step** for $age minutes (limit $limit). The agent step stopped without a result. $hint"
+      echo "#$issue stalled in $st for $age min -> blocked"
+    done
+    ;;
+
   ready-check)
     pr="$1"; issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || { echo "not a factory PR"; exit 0; }
-    case "$(current_state "$issue")" in cancelled|done) echo "issue #$issue is closed: ignored"; exit 0 ;; esac
+    case "$(current_state "$issue")" in
+      cancelled|done) echo "issue #$issue is closed: ignored"; exit 0 ;;
+      approved-for-production|deploying) echo "issue #$issue is being released: no new test request"; exit 0 ;;
+    esac
     prj=$(gh api "repos/$R/pulls/$pr")
     [ "$(echo "$prj" | jq -r .state)" = "open" ] || { echo "PR closed"; exit 0; }
     head=$(echo "$prj" | jq -r .head.sha)
@@ -483,6 +556,12 @@ case "$cmd" in
         FACTORY_START_APPROVED=1 FACTORY_STARTED_BY="$author" "$0" start "$issue" >/dev/null
         ack "$issue" "$cid" "Breakdown started $by." ;;
       plan-review:approve)
+        # Dependencies the plan names become GitHub "blocked by" relations (no manual step).
+        for dep in $(plan_depends "$issue"); do
+          if gh api "repos/$R/issues/$dep" >/dev/null 2>&1; then
+            blockers "$issue" | jq -e --argjson d "$dep" 'any(.[]; .number == $d)' >/dev/null || add_blocker "$issue" "$dep"
+          fi
+        done
         dir=$(mktemp -d); parts=$(split_parts "$issue" "$dir"); rm -rf "$dir"
         if [ "$parts" -ge 2 ]; then
           "$0" split "$issue" "$author"
@@ -525,7 +604,25 @@ case "$cmd" in
       human-review:changes)
         ack "$issue" "$cid" "${read_as}Changes requested $by. Agent: Reworking the pull request."
         "$0" rework "$issue" "$(printf 'Changes requested by %s (%s):\n\n> %s' "$author" "$curl_url" "$(printf '%s' "$body" | sed 's/^/> /' | tail -c 3000)")" ;;
+      blocked:approve)
+        # A release that was blocked (checks held or never started, main kept moving)
+        # is retried by a new explicit /approve: same decision as at Human Review.
+        prs=$(open_factory_prs "$issue"); pr=$(echo "$prs" | head -1)
+        head=""; [ -n "$pr" ] && head=$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)
+        if [ "$explicit" = yes ] && [ -n "$pr" ] && has_mark "$issue" "release-blocked $pr $head"; then
+          set_state "$issue" factory:approved-for-production; board "$issue" Deploying
+          ack "$issue" "$cid" "Release retried $by. Agent: Deploying (update, merge, production deploy, smoke check)."
+          emit land=true
+        elif [ "$explicit" = yes ]; then
+          ask "$issue" "$cid" "\`/approve\` retries a blocked release only, and this story is blocked for another reason (or its PR changed since). Reply \`/retry\` to send it back to the agents."
+        fi ;;
       blocked:retry)
+        if [ "$(state_before_block "$issue")" = breakdown ]; then
+          # Planning stalled (often a refinement after /changes): plan again, never build an unapproved plan.
+          set_state "$issue" factory:breakdown; board "$issue" Breakdown
+          ack "$issue" "$cid" "Retry $by. The breakdown agent writes the plan again and reads this thread."
+          exit 0
+        fi
         prs=$(open_factory_prs "$issue")
         if [ -n "$prs" ]; then
           for pr in $prs; do review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" failure "Retry requested by $author"; done
@@ -826,7 +923,7 @@ case "$cmd" in
     echo "issue #$issue: $n follow-up(s) created"
     ;;
 
-  status) status "$1" "$2"; echo "status of #$1 updated" ;;
+  status) status "$1" "$2" "${3:-}"; echo "status of #$1 updated" ;;
   notify) notify "$1" "$2"; echo "approvers notified on #$1" ;;
 
   child-closed)

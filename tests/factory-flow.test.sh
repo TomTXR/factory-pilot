@@ -24,6 +24,8 @@ if [ "$1" = "api" ]; then
     */dependencies/blocked_by*) case "$*" in *"-X POST"*) echo '{}' ;; *) dn=${path%/dependencies*}; dn=${dn##*/}; cat "$FX/blocked_by-$dn.json" 2>/dev/null || echo '[]' ;; esac ;;
     */dependencies/blocking*) dn=${path%/dependencies*}; dn=${dn##*/}; cat "$FX/blocking-$dn.json" 2>/dev/null || echo '[]' ;;
     */sub_issues*) case "$*" in *"-X POST"*) echo '{}' ;; *) pn=${path%/sub_issues*}; pn=${pn##*/}; cat "$FX/sub_issues-$pn.json" 2>/dev/null || cat "$FX/sub_issues.json" 2>/dev/null || echo '[]' ;; esac ;;
+    */issues/*/events*) en=${path%/events*}; en=${en##*/}; cat "$FX/events-$en.json" 2>/dev/null || echo '[]' ;;
+    */issues\?*labels=*) cat "$FX/story_issues.json" 2>/dev/null || echo '[]' ;;
     */issues\?*) cat "$FX/bot_issues.json" 2>/dev/null || echo '[]' ;;
     */issues) [ -n "${GH_FAIL_CREATE:-}" ] && exit 1; n=$(( $(cat "$FX/next" 2>/dev/null || echo 100) )); echo $((n+1)) > "$FX/next"; echo "{\"number\":$n,\"id\":$((n*1000))}" ;;
     */pulls/*/reviews/*) cat "$FX/review.json" ;;
@@ -57,7 +59,7 @@ setup() { # head_ref review_author review_body
   : > "$GH_LOG"
   jq -n --arg ref "$1" '{state:"open", head:{ref:$ref, sha:"sha1"}}' > "$FX/pull.json"
   jq -n --arg u "$2" --arg b "$3" '{user:{login:$u}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"
-  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/bot_issues.json" "$FX"/blocked_by-*.json "$FX"/blocking-*.json "$FX/reactions.json" "$FX/seq" "$FX/next" "$FX/jobs.json" "$FX/run-log.txt" "$WORK/out"
+  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/bot_issues.json" "$FX"/blocked_by-*.json "$FX"/blocking-*.json "$FX/reactions.json" "$FX/seq" "$FX/next" "$FX/jobs.json" "$FX/run-log.txt" "$FX"/events-*.json "$FX/story_issues.json" "$WORK/out"
   jq -n '[{number:16, head:{ref:"factory/issue-5"}}, {number:17, head:{ref:"factory/issue-50"}}]' > "$FX/open_pulls.json"
 }
 check() { # name expected(yes|no) pattern
@@ -858,6 +860,109 @@ check "MC7 only exact factory/issue-<n> branches are checked (as in land.yml)" n
 # PV. The preview comment must never edit another bot comment (rework requests carry the rework count).
 if grep -rq -- "--edit-last" "$ROOT/.github/workflows" "$ROOT/.github/scripts"; then fail=$((fail+1)); echo "FAIL PV1 --edit-last can overwrite a rework comment"; else pass=$((pass+1)); echo "ok   PV1 no --edit-last in workflows or scripts"; fi
 grep -q "factory:preview" "$ROOT/.github/workflows/deploy-target.yml" && { pass=$((pass+1)); echo "ok   PV2 preview comment found by its marker"; } || { fail=$((fail+1)); echo "FAIL PV2 preview marker"; }
+
+
+# RL. Release: the update of the branch is part of the release, and a blocked release is retried by /approve.
+relfx() { # state-label mark comment
+  setup factory/issue-5 agentbot x; : > "$CLASSIFY_LOG"
+  jq -n --arg l "$1" --arg m "$2" '{node_id:"I_test", labels:[{name:"factory:story"},{name:$l}], body:("story\n<!-- factory:status:start -->\n- x\n" + (if $m == "" then "" else "<!-- factory:mark " + $m + " -->\n" end) + "<!-- factory:status:end -->")}' > "$FX/issue.json"
+  jq -n --arg b "$3" '{user:{login:"alice", type:"User"}, body:$b, html_url:"https://x/c"}' > "$FX/comment.json"
+}
+for st in approved-for-production deploying; do
+  relfx factory:$st "" x; "$SCRIPT" pr-updated 16 >/dev/null 2>&1
+  check "RL1 the release's own branch update keeps $st" no "add-label factory:agent-review"
+  relfx factory:$st "" x; PREVIEW_HEALTH_CMD=true "$SCRIPT" ready-check 16 >/dev/null 2>&1
+  check "RL2 no second test request while $st" no "issue comment 5"
+  relfx factory:$st "" x; jq -n --arg b "$M
+🔄 CHANGES REQUESTED" '{user:{login:"agentbot"}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"; "$SCRIPT" review 16 1 >/dev/null 2>&1
+  check "RL3 a review during the release ($st) changes nothing" no "add-label factory:rework"
+done
+relfx factory:blocked "release-blocked 16 sha1" "/approve"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "RL4 /approve retries a blocked release" yes "add-label factory:approved-for-production"
+out_has land=true && { pass=$((pass+1)); echo "ok   RL4 land output"; } || { fail=$((fail+1)); echo "FAIL RL4 missing land output"; }
+relfx factory:blocked "release-blocked 16 oldsha" "/approve"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "RL5 /approve does not release a PR that changed since the block" no "add-label factory:approved-for-production"
+check "RL5 explains /approve vs /retry" yes "retries a blocked release only"
+relfx factory:blocked "" "/approve"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "RL6 /approve on a story blocked by the rework limit does not release" no "add-label factory:approved-for-production"
+relfx factory:blocked "release-blocked 16 sha1" "Looks fine now, ship it"
+FACTORY_APPROVERS=alice CLASSIFY_INTENT=approve GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "RL7 only an explicit /approve retries a release" no "add-label factory:approved-for-production"
+relfx factory:approved-for-production "" x
+"$SCRIPT" status 5 "Release blocked: test." "release-blocked 16 sha1" >/dev/null 2>&1
+check "RL11 the status subcommand records a mark (used by land.yml)" yes "^  \| <!-- factory:mark release-blocked 16 sha1 -->$"
+L="$ROOT/.github/workflows/land.yml"
+grep -q 'GH_TOKEN="$BOT_TOKEN" gh pr update-branch' "$L" && [ "$(grep -c 'gh pr update-branch' "$L")" = 1 ] \
+  && { pass=$((pass+1)); echo "ok   RL8 the branch update runs as the machine account only"; } || { fail=$((fail+1)); echo "FAIL RL8 branch update identity"; }
+grep -q 'status=action_required' "$L" && grep -q 'did not start within 3 minutes' "$L" \
+  && { pass=$((pass+1)); echo "ok   RL9 held or missing checks block at once"; } || { fail=$((fail+1)); echo "FAIL RL9 silent waiting"; }
+grep -q '"release-blocked $PR $head"' "$L" \
+  && { pass=$((pass+1)); echo "ok   RL10 a blocked release records the PR head for /approve"; } || { fail=$((fail+1)); echo "FAIL RL10 release-blocked mark"; }
+
+
+# WD. Watchdog: an agent step without progress within its limit is blocked once, with a notice.
+wdfx() { # state-label minutes-ago [mark]
+  setup factory/issue-5 agentbot x
+  jq -n '[{number:5}]' > "$FX/story_issues.json"
+  jq -n --arg l "$1" --arg m "${3:-}" '{node_id:"I_test", user:{login:"alice"}, assignees:[], labels:[{name:"factory:story"},{name:$l}], body:("story\n<!-- factory:status:start -->\n" + (if $m == "" then "" else "<!-- factory:mark " + $m + " -->\n" end) + "<!-- factory:status:end -->")}' > "$FX/issue-5.json"
+  t=$(( 2000000000 - $2 * 60 )); ts=$(date -u -r "$t" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$t" +%Y-%m-%dT%H:%M:%SZ)
+  jq -n --arg l "$1" --arg ts "$ts" '[{id:1, event:"labeled", label:{name:"factory:breakdown"}, created_at:"2026-01-01T00:00:00Z"}, {id:77, event:"labeled", label:{name:$l}, created_at:$ts}]' > "$FX/events-5.json"
+}
+wd() { WATCHDOG_NOW=2000000000 FACTORY_APPROVERS=alice "$SCRIPT" watchdog >/dev/null 2>&1; }
+wdfx factory:plan-approved 61; wd
+check "WD1 a build without progress for 61 min is blocked" yes "issue edit 5 --repo owner/repo --add-label factory:blocked"
+check "WD1 the owner is told what stalled" yes "Blocked \(watchdog\):\*\* no progress in \*\*Agent: Building\*\* for 61 minutes"
+check "WD1 the stall is recorded once per entry" yes "^  \| <!-- factory:mark stalled 77 -->$"
+wdfx factory:plan-approved 30; wd
+check "WD2 a build within its limit is left alone" no "add-label factory:blocked"
+wdfx factory:plan-approved 90 "stalled 77"; wd
+check "WD3 a reported stall is not reported again" no "issue comment 5"
+for st in plan-review human-review waiting split blocked; do
+  wdfx factory:$st 600; wd
+  check "WD4 human or waiting state $st is never flagged" no "add-label factory:blocked"
+done
+wdfx factory:breakdown 31; wd
+check "WD5 planning has a 30 min limit" yes "no progress in \*\*Agent: Planning\*\* for 31 minutes"
+wdfx factory:deploying 50; wd
+check "WD6 a stalled release can be retried with /approve" yes "<!-- factory:mark release-blocked 16 sha1 -->"
+
+# AB. An agent that stops on purpose sets factory:blocked: the factory makes it a block and asks the owner.
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_test", user:{login:"alice"}, assignees:[], labels:[{name:"factory:story"},{name:"factory:plan-approved"},{name:"factory:blocked"}]}' > "$FX/issue-5.json"
+jq -n '[{user:{login:"agentbot"}, body:"Not built: needs #35 first.", html_url:"https://x/c1"}]' > "$FX/comments.json"
+FACTORY_APPROVERS=alice "$SCRIPT" agent-blocked 5 >/dev/null 2>&1
+check "AB1 the other state labels are removed" yes "issue edit 5 --repo owner/repo --remove-label factory:plan-approved"
+check "AB1 the owner is asked with a link to the agent's reason" yes "an agent stopped working on this story and explained why: https://x/c1"
+
+# DP. Dependencies named in the plan become "blocked by" relations on approval.
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_test", id:5000, user:{login:"alice"}, labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '{node_id:"I_dep", id:35000, number:35, state:"open"}' > "$FX/issue-35.json"
+jq -n '[{user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\n## Summary\nx\n## Dependencies\n<!-- factory:depends-on -->\n- #35: per-account properties first\n- #5: itself\n## Open questions\nNone"}]' > "$FX/comments.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "DP1 the plan's dependency is set as blocked by" yes "issues/5/dependencies/blocked_by -F issue_id=35000"
+check "DP1 the story never blocks itself" no "issue_id=5000"
+grep -q "factory:depends-on" "$ROOT/factory/automations/breakdown/worker.py" && grep -q "Never ask a human to change anything in GitHub by hand" "$ROOT/factory/automations/breakdown/worker.py" \
+  && { pass=$((pass+1)); echo "ok   DP2 the breakdown prompt has the Dependencies section and no manual steps"; } || { fail=$((fail+1)); echo "FAIL DP2 breakdown prompt"; }
+
+
+# RT. /retry returns to the step that stalled: a planning stall plans again, it never builds an unapproved plan.
+setup factory/issue-5 agentbot x
+echo '[]' > "$FX/open_pulls.json"
+jq -n '{node_id:"I_test", user:{login:"alice"}, labels:[{name:"factory:story"},{name:"factory:blocked"}]}' > "$FX/issue.json"
+jq -n '[{user:{login:"agentbot"}, body:"<!-- factory:breakdown -->\n## Summary\nold plan"}]' > "$FX/comments.json"
+jq -n '[{id:1,event:"labeled",label:{name:"factory:plan-review"}},{id:2,event:"labeled",label:{name:"factory:breakdown"}},{id:3,event:"labeled",label:{name:"factory:blocked"}}]' > "$FX/events-5.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/retry", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "RT1 /retry after a planning stall plans again" yes "add-label factory:breakdown"
+check "RT1 /retry after a planning stall never builds the old plan" no "add-label factory:plan-approved"
+jq -n '[{id:1,event:"labeled",label:{name:"factory:plan-approved"}},{id:3,event:"labeled",label:{name:"factory:blocked"}}]' > "$FX/events-5.json"
+: > "$GH_LOG"; FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 901 >/dev/null 2>&1
+check "RT2 /retry after a build stall restarts the builder from the approved plan" yes "add-label factory:plan-approved"
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
