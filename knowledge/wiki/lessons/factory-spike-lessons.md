@@ -1,7 +1,7 @@
 # Factory Spike Lessons
 
 > Sources: Spike 0 log and decisions, 2026-11-17 to 2026-11-19; product owner decisions on stories #25, #28, #32
-> Raw: [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
+> Raw: [Plan criterion for non-existing data](../../raw/lessons/2026-11-19-plan-criteria-for-nonexistent-data.md); [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -31,6 +31,12 @@ Running real stories through the factory showed where the first design broke. Ea
 | Deferred work had to be typed by hand (#28 question 2) | "Please create a ticket" or `/followup`: the factory writes and starts the story |
 | A follow-up could be built before what it needs (#32 needs #28) | GitHub "blocked by"; planning runs, the build waits until blockers are done |
 
+## Plan review
+
+| Problem seen | Change |
+|--------------|--------|
+| #35's plan claimed unowned properties for the first account to sign in, although production had none. The rule collided with per-account uniqueness and 30-day sessions: 2 reworks, each fix revealing the next edge case (P0 lockout, P1 data exposure) | Criterion dropped by `/changes`. At plan review, reject criteria for scenarios that cannot occur; list them under Out of scope. When review findings keep hitting the same rule, the rule is wrong, not the code: send the story back to the human (not built yet) |
+
 ## Agents and quality
 
 - Plans decide quality: breakdown and review run on Opus, code on Sonnet, all at effort medium.
@@ -47,8 +53,10 @@ Running real stories through the factory showed where the first design broke. Ea
 - Each workflow step has its own `GITHUB_OUTPUT` file.
 - The reviewer template does not review a PR with red required checks and says nothing. A failed CI run on a factory PR must go back to the builder, or the story waits forever (#34, PR #39).
 - jq's `//` treats `false` as missing: `.mergeable // empty` never reports a conflict.
+- `gh pr comment --edit-last` edits the newest comment of the account, not a specific one. All factory comments share one account, so it overwrote a rework request and reset the rework count (PR #45). Update comments only by their own marker ([source](../../raw/process/2026-11-19-preview-comment-edit-last.md)).
 - GitHub runs no `pull_request` workflows on a PR with a merge conflict, and `mergeable` is `null` until computed. Conflicts must be checked on `push` (main and factory branches), polling until GitHub reports true or false.
 
 ## See Also
 
 - [Story Workflow](../process/story-workflow.md)
+- [Factory Self-Hosting](../process/factory-self-hosting.md)
