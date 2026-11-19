@@ -1,7 +1,7 @@
 # Story Workflow
 
 > Sources: Product owner decisions in the factory spike, 2026-11-19
-> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Comments on human tasks](../../raw/process/2026-11-19-human-task-comments.md)
+> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Comments on human tasks](../../raw/process/2026-11-19-human-task-comments.md); [Failed CI sends a PR back](../../raw/process/2026-11-19-ci-failure-rework.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -18,7 +18,7 @@ The board columns say who acts next: columns starting with **Human:** wait for a
 | Inbox | Nobody (stories by non-approvers wait) | `/start` or `/approve` |
 | Breakdown | Breakdown agent (Opus) writes the plan | None |
 | Plan Review | Approvers | Answers or changes give a refined plan; `/approve` starts the build |
-| In Progress, Agent Review, Rework | Builder (Sonnet) and reviewer (Opus); at most 3 rework loops | None |
+| In Progress, Agent Review, Rework | Builder (Sonnet) and reviewer (Opus); at most 3 rework loops. A failed CI run sends the PR back to the builder with the failing tests (the reviewer does not review red PRs) | None |
 | Human Review | Approvers test the preview | Changes revise the PR; only an explicit `/approve` releases, and only when all human tasks are closed |
 | Deploying, Done | Factory merges and deploys | None |
 | Blocked | Human | `/retry` |

@@ -45,6 +45,8 @@ Running real stories through the factory showed where the first design broke. Ea
 - Rebase merge fails on branches with merge commits: squash merge, branch update by merge.
 - Changing the board's status options resets all cards: save and restore the statuses.
 - Each workflow step has its own `GITHUB_OUTPUT` file.
+- The reviewer template does not review a PR with red required checks and says nothing. A failed CI run on a factory PR must go back to the builder, or the story waits forever (#34, PR #39).
+- jq's `//` treats `false` as missing: `.mergeable // empty` never reports a conflict.
 
 ## See Also
 
