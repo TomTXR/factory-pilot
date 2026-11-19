@@ -1,7 +1,7 @@
 # Factory Spike Lessons
 
 > Sources: Spike 0 log and decisions, 2026-11-17 to 2026-11-19; product owner decisions on stories #25, #28, #32
-> Raw: [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
+> Raw: [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -17,6 +17,8 @@ Running real stories through the factory showed where the first design broke. Ea
 | Answers that accept all defaults count as approval (#28 approved an old plan by surprise) | Plans carry machine-readable sections, so approval does the right thing; check the plan-ready notice before answering |
 | Closed stories stayed in Plan Review (#25) | Close as not planned or duplicate, or `/cancel`, cancels the story and its PRs and previews |
 | Board columns named states, not who acts; humans could not see where they were needed | Columns start with `Human:` or `Agent:` (for example "Human: Review plan", "Agent: Building"); filter on the Human columns |
+| An email for almost every factory step; some action messages reached nobody but the author | Quiet mode: progress in an edited status section, reactions instead of replies, new comments only for actions and always with the approvers' mentions; the plan carries its own review request. Reason: GitHub notifies participants about new comments, not about edits or reactions |
+| The agent's mentions were a hardcoded copy of the approver list; every approver got every story | Story owners: assignee, else the factory's owner key, else the author, else all approvers. One approver list; no assignment emails without a hand-over |
 
 ## Story shape
 
@@ -24,6 +26,7 @@ Running real stories through the factory showed where the first design broke. Ea
 |--------------|--------|
 | A story was too large for one PR (#28) | The plan proposes a split; approval creates sub-issues built one after another |
 | External setup (Google OAuth client) was only a plan risk (#28) | Human tasks as assigned sub-issues; the release waits for them |
+| A comment on a human task reached nobody; "All done" did not close it, `/approve` would have planned the task (#38) | Task comments: done closes, a question gets an agent answer, else the task is blocked and the other approvers decide |
 | No safe place for credentials in a public repo | Repository secrets `PILOT_<NAME>`, production only, never in comments |
 | Deferred work had to be typed by hand (#28 question 2) | "Please create a ticket" or `/followup`: the factory writes and starts the story |
 | A follow-up could be built before what it needs (#32 needs #28) | GitHub "blocked by"; planning runs, the build waits until blockers are done |
@@ -32,7 +35,7 @@ Running real stories through the factory showed where the first design broke. Ea
 
 - Plans decide quality: breakdown and review run on Opus, code on Sonnet, all at effort medium.
 - Agents act as a machine account, never as a human. Reviews and factory markers count only from that account or the automation; forged approvals were a P0.
-- The reviewer agent found a real defect in almost every factory change. Every change goes through it, with a test that fails without the fix.
+- The reviewer agent found a real defect in almost every factory change. Example: the first agent with file tools in a comment workflow could have been tricked into posting a token (PR #42); every such agent now runs without tokens, in a copy without `.git`. Every change goes through it, with a test that fails without the fix.
 - Merge conflicts on factory branches go back to the builder automatically.
 
 ## GitHub specifics
@@ -42,6 +45,9 @@ Running real stories through the factory showed where the first design broke. Ea
 - Rebase merge fails on branches with merge commits: squash merge, branch update by merge.
 - Changing the board's status options resets all cards: save and restore the statuses.
 - Each workflow step has its own `GITHUB_OUTPUT` file.
+- The reviewer template does not review a PR with red required checks and says nothing. A failed CI run on a factory PR must go back to the builder, or the story waits forever (#34, PR #39).
+- jq's `//` treats `false` as missing: `.mergeable // empty` never reports a conflict.
+- GitHub runs no `pull_request` workflows on a PR with a merge conflict, and `mergeable` is `null` until computed. Conflicts must be checked on `push` (main and factory branches), polling until GitHub reports true or false.
 
 ## See Also
 

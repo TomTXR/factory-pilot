@@ -15,6 +15,7 @@ automation templates (MIT licence) unchanged.
 """
 
 import json
+import re
 
 from agent_conversation import AgentConversationDispatcher
 from github_client import GitHubRepository, run_repositories
@@ -34,8 +35,26 @@ class Breakdown(GitHubRepository):
         ]
         return matching[-1] if matching else None
 
+    @staticmethod
+    def _owners(issue):
+        owners = [a["login"] for a in issue.get("assignees") or [] if a.get("login")]
+        author = (issue.get("user") or {}).get("login", "")
+        if not owners and author.endswith("[bot]"):
+            for line in (issue.get("body") or "").splitlines()[:3]:
+                m = re.match(r"^<!-- factory:owner ([A-Za-z0-9-]+) -->$", line.strip())
+                if m:
+                    owners.append(m.group(1))
+        if not owners and author and not author.endswith("[bot]"):
+            owners.append(author)
+        return ["@" + o for o in owners]
+
     def _prompt(self, issue, label, next_label):
         number = issue["number"]
+        # Quiet mode: the plan comment itself asks the story's owners (one comment, one
+        # email). Same rule as owner_mentions in factory-flow.sh: assignees, else the owner
+        # key of a factory-created issue, else the author. The factory checks the result
+        # and posts a fallback notice if an owner is missing.
+        mentions = " ".join(self._owners(issue))
         token = self.token_name
         repo = self.repository
         return (
@@ -67,6 +86,16 @@ class Breakdown(GitHubRepository):
             "   - `## Context used` - the wiki articles and files you relied on, as repository paths.\n"
             "   - `## Open questions` - numbered questions only the product owner can answer, each with "
             "your proposed default. Write `None` if there are none.\n"
+            "   End the comment with this review request, after a line `---`: a line "
+            f"`**Plan ready for your review** {mentions}` and then these two bullet points: "
+            "`- Answer the open questions or describe changes: the agent writes a refined plan.` and "
+            "`- Reply /approve (or write that the plan is fine) to start building.` If the plan has a "
+            "`## Proposed split`, the second bullet instead says that /approve splits the story into the "
+            "N proposed stories as sub-issues, each with its own plan, built one after another (N = the "
+            "number of stories), and add a third bullet `- To keep one story, ask for a plan without the "
+            "split.` If the plan has `## Human tasks`, add that approving creates them as sub-issues "
+            "assigned to the approver and that the release waits until they are closed. Mention people "
+            "only in this review request, nowhere else in the comment.\n"
             "   If the story is too large for one pull request, say so under Technical notes and add a "
             "section `## Proposed split` directly before `## Open questions`. Its first line is "
             "`<!-- factory:split -->`. Then one block per smaller story, in build order (2 to 5 stories), "

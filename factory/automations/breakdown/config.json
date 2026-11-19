@@ -1,5 +1,7 @@
 {
-  "repos": ["TomTXR/factory-pilot"],
+  "repos": [
+    "TomTXR/factory-pilot"
+  ],
   "trigger_label": "factory:breakdown",
   "next_label": "factory:plan-review",
   "github_token_secret": "FACTORY_GITHUB_BREAKDOWN_TOKEN"

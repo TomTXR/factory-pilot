@@ -32,7 +32,7 @@ How work moves through the software factory.
 
 | Article | Summary | Updated |
 |---------|---------|---------|
-| [Story Workflow](process/story-workflow.md) | Stages, human commands at the two gates, cancel, story split into sub-issues, human tasks and app secrets, follow-up stories, dependencies | 2026-11-19 |
+| [Story Workflow](process/story-workflow.md) | Stages, human commands at the two gates, cancel, story split into sub-issues, human tasks, task comments and app secrets, follow-up stories, dependencies, quiet notifications, story owners | 2026-11-19 |
 
 ## lessons
 

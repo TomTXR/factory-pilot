@@ -37,6 +37,22 @@ Append-only. Newest entries at the bottom.
 - Raw: raw/lessons/2026-11-19-board-column-names.md
 - Updated: Story Workflow
 
+## [2026-11-19] ingest | Story Workflow
+- Raw: raw/process/2026-11-19-quiet-notifications.md
+- Updated: Factory Spike Lessons
+
+## [2026-11-19] ingest | Story Workflow
+- Raw: raw/process/2026-11-19-story-owners.md
+- Updated: Factory Spike Lessons
+
+## [2026-11-19] ingest | Story Workflow
+- Raw: raw/process/2026-11-19-human-task-comments.md
+- Updated: Factory Spike Lessons
+
+## [2026-11-19] ingest | Story Workflow
+- Raw: raw/process/2026-11-19-ci-failure-rework.md
+- Updated: Factory Spike Lessons
+
 ## [2026-11-19] ingest | Home Maintenance Log
 - Raw: raw/stories/2026-11-19-story-34-google-sign-in.md
 - Updated: Home Owner Persona

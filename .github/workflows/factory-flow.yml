@@ -66,11 +66,11 @@ jobs:
         run: |
           if [ -z "$APPROVERS" ] || ! echo ",$APPROVERS," | grep -qi ",$SENDER,"; then
             gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:rework
-            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Rework ignored: @$SENDER is not on the approver list. Label removed."
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Rework ignored: $SENDER is not on the approver list. Label removed."
             exit 0
           fi
           last=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --jq "[.[] | select(.user.login==\"$SENDER\")] | last | .html_url // \"\"")
-          .github/scripts/factory-flow.sh rework "$ISSUE" "Rework requested by @$SENDER. See the latest comment: $last"
+          .github/scripts/factory-flow.sh rework "$ISSUE" "Rework requested by $SENDER. See the latest comment: $last"
 
   plan-ready:
     # The breakdown agent moved the story to the human gate.
