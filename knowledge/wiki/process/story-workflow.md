@@ -10,6 +10,9 @@ A story moves from the human's idea through an agent plan, an agent build and re
 
 ## Stages
 
+The board columns say who acts next: columns starting with **Human:** wait for a person (Start story, Review plan, Test and release, Do task, Decide (blocked)); **Agent:** columns need no action. Filter the board with `status:"Human: Review plan"` and the other Human columns to see only your actions.
+
+
 | Stage | Who acts | Human input |
 |-------|----------|-------------|
 | Inbox | Nobody (stories by non-approvers wait) | `/start` or `/approve` |
