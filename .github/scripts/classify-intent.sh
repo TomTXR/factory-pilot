@@ -2,7 +2,7 @@
 # Classify a human comment at a factory gate into approve | changes | cancel | unclear,
 # or a comment on a human task into done | question | other.
 # Usage: classify-intent.sh <state> <comment-file> [context-file]
-#   state: plan-review | human-review | human-task
+#   state: plan-review | human-review | blocked | human-task
 #   context-file: optional; for plan-review the plan's "Open questions" section,
 #   so answers that only confirm the proposed defaults are recognised
 # Prints one JSON object: {"intent": "...", "summary": "...", "followup": true|false}
@@ -25,6 +25,7 @@ fi
 case "$state" in
   plan-review) gate="The agent posted an implementation plan with acceptance criteria and open questions. The human now reacts to the plan." ;;
   human-review) gate="The agent built the change and deployed a test version. The human tested it and now reacts to the result." ;;
+  blocked) gate="The factory stopped this story (a step failed, stalled, or reached a limit) and asks the human how to continue. The human now replies. Continuing as is (go on, retry, try again, approve, release) counts as approve." ;;
   human-task) gate="The factory asked the human to do a task outside the repository (for example create an account, set up an external console, store a credential as a repository secret). The human now comments on that task." ;;
   *) echo '{"intent":"unclear","summary":"not a gate state"}'; exit 0 ;;
 esac

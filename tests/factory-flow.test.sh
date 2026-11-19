@@ -884,13 +884,14 @@ out_has land=true && { pass=$((pass+1)); echo "ok   RL4 land output"; } || { fai
 relfx factory:blocked "release-blocked 16 oldsha" "/approve"
 FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
 check "RL5 /approve does not release a PR that changed since the block" no "add-label factory:approved-for-production"
-check "RL5 explains /approve vs /retry" yes "retries a blocked release only"
+check "RL5 a PR that changed goes back to the agents instead" yes "add-label factory:rework"
 relfx factory:blocked "" "/approve"
 FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
 check "RL6 /approve on a story blocked by the rework limit does not release" no "add-label factory:approved-for-production"
 relfx factory:blocked "release-blocked 16 sha1" "Looks fine now, ship it"
 FACTORY_APPROVERS=alice CLASSIFY_INTENT=approve GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
-check "RL7 only an explicit /approve retries a release" no "add-label factory:approved-for-production"
+check "RL7 a free-text go-on retries the blocked release (same approved commit)" yes "add-label factory:approved-for-production"
+grep -q blocked "$CLASSIFY_LOG" && { pass=$((pass+1)); echo "ok   RL7 blocked is a gate for the classifier"; } || { fail=$((fail+1)); echo "FAIL RL7 classifier not called at blocked"; }
 relfx factory:approved-for-production "" x
 "$SCRIPT" status 5 "Release blocked: test." "release-blocked 16 sha1" >/dev/null 2>&1
 check "RL11 the status subcommand records a mark (used by land.yml)" yes "^  \| <!-- factory:mark release-blocked 16 sha1 -->$"
@@ -963,6 +964,32 @@ check "RT1 /retry after a planning stall never builds the old plan" no "add-labe
 jq -n '[{id:1,event:"labeled",label:{name:"factory:plan-approved"}},{id:3,event:"labeled",label:{name:"factory:blocked"}}]' > "$FX/events-5.json"
 : > "$GH_LOG"; FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 901 >/dev/null 2>&1
 check "RT2 /retry after a build stall restarts the builder from the approved plan" yes "add-label factory:plan-approved"
+
+
+# BG. Blocked is a gate: any clear "go on" continues according to the block reason.
+relfx factory:blocked "release-blocked 16 sha1" "/retry"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "BG1 /retry after a blocked release releases again (the #35 case)" yes "add-label factory:approved-for-production"
+relfx factory:blocked "release-blocked 16 sha1" "The login button should be blue first"
+FACTORY_APPROVERS=alice CLASSIFY_INTENT=changes GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "BG2 a change request after a blocked release goes to the builder" yes "add-label factory:rework"
+check "BG2 a change request never releases" no "add-label factory:approved-for-production"
+relfx factory:blocked "" "go on please"
+FACTORY_APPROVERS=alice CLASSIFY_INTENT=approve GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "BG3 go-on after a stall restarts the agents" yes "add-label factory:rework"
+relfx factory:blocked "" "hmm what happened here?"
+FACTORY_APPROVERS=alice CLASSIFY_INTENT=unclear GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "BG4 an unclear comment asks how to continue" yes "Write how to continue"
+check "BG4 an unclear comment changes nothing" no "add-label factory:"
+relfx factory:blocked "" "drop it"
+FACTORY_APPROVERS=alice CLASSIFY_INTENT=cancel GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "BG5 cancelling still needs the exact /cancel" no "issue close 5"
+relfx factory:blocked "release-blocked 16 sha1" x
+jq -n '[{user:{login:"agentbot"}, body:"No code change needed.", html_url:"https://x/c9"}]' > "$FX/comments.json"
+FACTORY_APPROVERS=alice "$SCRIPT" agent-blocked 5 >/dev/null 2>&1
+check "BG6 a rework without changes on a pending release says only the release is missing" yes "Only the release of the approved commit is missing"
+grep -q 'send_back; reason="required checks failed"' "$ROOT/.github/workflows/land.yml" \
+  && { pass=$((pass+1)); echo "ok   BG7 failing checks at release go to the builder"; } || { fail=$((fail+1)); echo "FAIL BG7 send_back"; }
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -78,6 +78,13 @@ jobs:
           REQUIRED_CHECKS: "checks e2e"
         run: |
           reason=""; updates=0; since=$(date +%s); head=""
+          send_back() { # failing checks: the builder can fix this (its own branch only), no human decision needed
+            branch=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefName --jq .headRefName)
+            [ "$branch" = "factory/issue-$ISSUE" ] || return 0
+            .github/scripts/factory-flow.sh rework "$ISSUE" "$(printf 'The release of PR #%s was stopped: required checks failed on %s after it was brought up to date with `main` (see the checks of the PR). Fix the cause so that the features on `main` and this story both work and all checks pass, then push.' "$PR" "${head:0:7}")"
+            echo "conflict=true" >> "$GITHUB_OUTPUT"   # skip the merge: the story is back with the builder
+            exit 0
+          }
           for i in $(seq 1 100); do
             state=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json mergeStateStatus --jq .mergeStateStatus)
             head=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)
@@ -103,7 +110,7 @@ jobs:
                   .github/scripts/factory-flow.sh status "$ISSUE" "The approved release could not be merged: PR #$PR conflicts with the current main. Agent: Reworking resolves the conflict; a new test request follows and needs a new /approve."
                 fi
                 exit 0 ;;
-              BLOCKED_BY_FAILURE) reason="required checks failed"; break ;;
+              BLOCKED_BY_FAILURE) send_back; reason="required checks failed"; break ;;
             esac
             # Do not wait silently: runs held for approval, or required checks that never start.
             if [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$head&status=action_required" --jq .total_count)" -gt 0 ]; then
@@ -114,7 +121,7 @@ jobs:
             if [ -n "$missing" ] && [ $(( $(date +%s) - since )) -gt 180 ]; then
               reason="required checks did not start within 3 minutes on ${head:0:7}:$missing"; break
             fi
-            if gh pr checks "$PR" --repo "$GITHUB_REPOSITORY" --required 2>/dev/null | awk '{print $2}' | grep -q fail; then reason="required checks failed"; break; fi
+            if gh pr checks "$PR" --repo "$GITHUB_REPOSITORY" --required 2>/dev/null | awk '{print $2}' | grep -q fail; then send_back; reason="required checks failed"; break; fi
             sleep 15
           done
           [ -n "$reason" ] || reason="merge state \`$state\` after waiting 25 minutes"
@@ -122,7 +129,7 @@ jobs:
           .github/scripts/board-status.sh "$NODE" Blocked
           # The mark lets a new /approve retry exactly this release (same PR head).
           .github/scripts/factory-flow.sh status "$ISSUE" "Release blocked: $reason." "release-blocked $PR $head"
-          .github/scripts/factory-flow.sh notify "$ISSUE" "**Blocked:** cannot release PR #$PR: $reason. Fix the cause, then reply \`/approve\` to try the release again."
+          .github/scripts/factory-flow.sh notify "$ISSUE" "**Blocked:** cannot release PR #$PR: $reason. Reply \"go on\" (or anything that says so) to release the same commit again once the cause is fixed."
           exit 1
 
       - name: Merge

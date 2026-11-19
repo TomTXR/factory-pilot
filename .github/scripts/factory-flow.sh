@@ -288,7 +288,7 @@ case "$cmd" in
         "$0" ready-check "$pr" ;;
       "⏸ INCONCLUSIVE")
         set_state "$issue" factory:blocked; board "$issue" Blocked
-        notify "$issue" "**Blocked:** the reviewer agent could not reach a verdict on PR #$pr ($url). Decide, then reply \`/retry\` or \`/changes <what>\`." ;;
+        notify "$issue" "**Blocked:** the reviewer agent could not reach a verdict on PR #$pr ($url). Reply how to continue (for example \"go on\", or what should change)." ;;
       *) echo "no verdict marker, nothing to do" ;;
     esac
     ;;
@@ -305,7 +305,7 @@ case "$cmd" in
     if [ "$n" -ge "$MAX_REWORK" ]; then
       for pr in $(open_factory_prs "$issue"); do review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" pending "Blocked: rework limit reached"; done
       set_state "$issue" factory:blocked; board "$issue" Blocked
-      notify "$issue" "**Blocked:** $n rework loops reached the limit of $MAX_REWORK. Decide how to continue, then reply \`/retry\` (optionally with instructions)." 
+      notify "$issue" "**Blocked:** $n rework loops reached the limit of $MAX_REWORK. Reply how to continue: \"go on\" gives the agents another round; add what should change if needed." 
       echo "issue #$issue -> blocked (rework limit)"; exit 0
     fi
     prs=$(open_factory_prs "$issue")
@@ -383,7 +383,12 @@ case "$cmd" in
     url=$(gh api "repos/$R/issues/$issue/comments" --paginate | jq -rs --arg agents ",$AGENTS," \
       '[.[][] | (.user.login | ascii_downcase) as $u | select($agents | ascii_downcase | contains("," + $u + ","))] | last | .html_url // ""')
     status "$issue" "Blocked: an agent stopped and explained why${url:+ ($url)}."
-    notify "$issue" "**Blocked:** an agent stopped working on this story and explained why${url:+: $url}. Answer there, then reply \`/retry\` to restart the step (it reads this thread)."
+    pr=$(open_factory_prs "$issue" | head -1)
+    if [ -n "$pr" ] && has_mark "$issue" "release-blocked $pr $(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)"; then
+      notify "$issue" "**Blocked:** an agent found nothing to change${url:+ ($url)}. Only the release of the approved commit is missing: reply \"go on\" to release it."
+      echo "issue #$issue -> blocked by an agent, release pending"; exit 0
+    fi
+    notify "$issue" "**Blocked:** an agent stopped working on this story and explained why${url:+: $url}. Reply how to continue (for example \"go on\"; the step restarts and reads this thread)."
     echo "issue #$issue -> blocked by an agent"
     ;;
 
@@ -408,13 +413,13 @@ case "$cmd" in
       age=$(( (now - $(date -u -d "$since" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$since" +%s)) / 60 ))
       [ "$age" -ge "$limit" ] || { echo "#$issue $st for ${age} min (limit $limit)"; continue; }
       has_mark "$issue" "stalled $evid" && { echo "#$issue already reported"; continue; }
-      hint="Reply \`/retry\` to restart the step."
+      hint="Reply how to continue (for example \"go on\"; the step restarts and reads this thread)."
       extra=""
       if [ "$st" = approved-for-production ] || [ "$st" = deploying ]; then
         pr=$(open_factory_prs "$issue" | head -1)
         if [ -n "$pr" ]; then
           extra="release-blocked $pr $(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)"
-          hint="Check the release run, then reply \`/approve\` to try the release again."
+          hint="Reply \"go on\" to release the same commit again."
         else
           hint="The PR is already merged: check the deploy run and production, then close the story by hand if it is live."
         fi
@@ -533,7 +538,7 @@ case "$cmd" in
     echo "comment $cid by $author in state $state: command=${cmd_line:-none}"
     if [ "$explicit" = no ]; then
       case "$state" in
-        plan-review|human-review)
+        plan-review|human-review|blocked)
           tmp=$(mktemp); ctx=$(mktemp); printf '%s' "$body" > "$tmp"
           [ "$state" = plan-review ] && plan_questions "$issue" > "$ctx"
           res=$("$here/classify-intent.sh" "$state" "$tmp" "$ctx"); rm -f "$tmp" "$ctx"
@@ -604,36 +609,36 @@ case "$cmd" in
       human-review:changes)
         ack "$issue" "$cid" "${read_as}Changes requested $by. Agent: Reworking the pull request."
         "$0" rework "$issue" "$(printf 'Changes requested by %s (%s):\n\n> %s' "$author" "$curl_url" "$(printf '%s' "$body" | sed 's/^/> /' | tail -c 3000)")" ;;
-      blocked:approve)
-        # A release that was blocked (checks held or never started, main kept moving)
-        # is retried by a new explicit /approve: same decision as at Human Review.
+      blocked:approve|blocked:retry|blocked:changes)
+        # Blocked is a gate: a clear "go on" (/retry, /approve, "retry", "go on", "approve")
+        # or a change request continues according to why the story is blocked. The human
+        # does not need to know the reason; the factory does. Agents read this thread.
         prs=$(open_factory_prs "$issue"); pr=$(echo "$prs" | head -1)
         head=""; [ -n "$pr" ] && head=$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)
-        if [ "$explicit" = yes ] && [ -n "$pr" ] && has_mark "$issue" "release-blocked $pr $head"; then
+        if [ "$intent" != changes ] && [ -n "$pr" ] && has_mark "$issue" "release-blocked $pr $head"; then
+          # The release stopped. The human approved exactly this commit for production
+          # before (explicit /approve at Human Review), so this is not a new release decision.
           set_state "$issue" factory:approved-for-production; board "$issue" Deploying
-          ack "$issue" "$cid" "Release retried $by. Agent: Deploying (update, merge, production deploy, smoke check)."
+          ack "$issue" "$cid" "${read_as}Release retried $by (same commit ${head:0:7}). Agent: Deploying (update, merge, production deploy, smoke check)."
           emit land=true
-        elif [ "$explicit" = yes ]; then
-          ask "$issue" "$cid" "\`/approve\` retries a blocked release only, and this story is blocked for another reason (or its PR changed since). Reply \`/retry\` to send it back to the agents."
-        fi ;;
-      blocked:retry)
+          exit 0
+        fi
         if [ "$(state_before_block "$issue")" = breakdown ]; then
           # Planning stalled (often a refinement after /changes): plan again, never build an unapproved plan.
           set_state "$issue" factory:breakdown; board "$issue" Breakdown
-          ack "$issue" "$cid" "Retry $by. The breakdown agent writes the plan again and reads this thread."
+          ack "$issue" "$cid" "${read_as}Continued $by. The breakdown agent writes the plan again and reads this thread."
           exit 0
         fi
-        prs=$(open_factory_prs "$issue")
         if [ -n "$prs" ]; then
-          for pr in $prs; do review_status "$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)" failure "Retry requested by $author"; done
+          for p in $prs; do review_status "$(gh api "repos/$R/pulls/$p" | jq -r .head.sha)" failure "Continued by $author"; done
           set_state "$issue" factory:rework; board "$issue" Rework
-          ack "$issue" "$cid" "Retry $by. The builder revises PR $(echo $prs | tr ' ' ',') and reads this thread."
+          ack "$issue" "$cid" "${read_as}Continued $by. The builder revises PR $(echo $prs | tr ' ' ',') and reads this thread."
         elif [ "$(gh api "repos/$R/issues/$issue/comments" --paginate | jq -s --arg agents ",$AGENTS," '[.[][] | (.user.login | ascii_downcase) as $u | select(($agents | ascii_downcase | contains("," + $u + ",")) and (.body | startswith("<!-- factory:breakdown -->")))] | length')" -gt 0 ]; then
           set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
-          ack "$issue" "$cid" "Retry $by. The builder starts again from the approved plan."
+          ack "$issue" "$cid" "${read_as}Continued $by. The builder starts again from the approved plan and reads this thread."
         else
           set_state "$issue" factory:breakdown; board "$issue" Breakdown
-          ack "$issue" "$cid" "Retry $by. The breakdown agent starts again."
+          ack "$issue" "$cid" "${read_as}Continued $by. The breakdown agent starts again."
         fi ;;
       done:cancel|cancelled:cancel)
         ask "$issue" "$cid" "This story is already closed (**$state**)." ;;
@@ -648,6 +653,8 @@ case "$cmd" in
         fi ;;
       *:followup-only)
         ack "$issue" "$cid" "Follow-up request $by handled. Nothing else changes on this story." ;;
+      blocked:unclear)
+        ask "$issue" "$cid" "${read_as}No action taken. Write how to continue (for example \"go on\", or describe what should change), or \`/cancel\` to drop the story." ;;
       plan-review:unclear|human-review:unclear)
         if [ "$followup" = yes ]; then
           ask "$issue" "$cid" "${read_as}Follow-up request handled (see the status at the end of the issue). No other action. Reply \`/approve\` to proceed or \`/changes <what>\` to request changes."
