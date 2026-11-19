@@ -25,3 +25,10 @@ Append-only. Newest entries at the bottom.
 
 ## [2026-11-19] ingest | Story Workflow
 - Raw: raw/process/2026-11-19-follow-up-stories.md
+
+## [2026-11-19] ingest | Story Workflow
+- Raw: raw/process/2026-11-19-story-dependencies.md
+
+## [2026-11-19] ingest | Factory Spike Lessons
+- Raw: raw/lessons/2026-11-19-factory-spike-lessons.md
+- Updated: Story Workflow
