@@ -91,3 +91,8 @@ Append-only. Newest entries at the bottom.
 
 ## [2026-11-19] ingest | Story Workflow
 - Raw: raw/process/2026-11-19-human-task-secret-rights.md
+
+## [2026-11-19] record | story #63
+- Raw: raw/stories/2026-11-19-story-63-document-current-app.md; backfilled raw/stories/2026-11-18-story-18-version-footer.md, raw/stories/2026-11-19-story-35-per-account-properties.md, raw/stories/2026-11-19-story-46-delete-account.md
+- Created: Property, Account, Account deletion, App version and health status, System overview, Data model, API, Authentication, Screens, UI patterns, decision records 001 to 019
+- Updated: Knowledge Base Index (concept map rewritten as a valid four-column table, planned concepts marked, all articles listed), Home Maintenance Log (overview, links, planned marks, annotation of the stale comment in migration 004), AGENTS.md (architecture table and links)
