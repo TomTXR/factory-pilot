@@ -43,6 +43,13 @@ describe('AuthGate', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in did not complete');
   });
 
+  it('keeps the failure message after removing the parameter from the URL', async () => {
+    window.history.replaceState(null, '', '/?auth_error=1');
+    render(<AuthGate loadMe={async () => null} loadMode={async () => 'google'} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in did not complete');
+    expect(window.location.search).toBe('');
+  });
+
   it('shows the app after the test sign-in', async () => {
     const userEv = userEvent.setup();
     let signedIn = false;

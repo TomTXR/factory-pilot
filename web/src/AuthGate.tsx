@@ -32,7 +32,7 @@ export function AuthGate({
   loadMode = fetchSignInMode,
   doTestSignIn = testSignIn,
   doSignOut = signOut,
-  authFailed = new URLSearchParams(window.location.search).has('auth_error'),
+  authFailed: authFailedProp,
   leave = () => window.location.replace('/'),
 }: {
   loadMe?: () => Promise<User | null>;
@@ -44,6 +44,10 @@ export function AuthGate({
   leave?: () => void;
 }) {
   const [state, setState] = useState<State>({ kind: 'loading' });
+  // Read once: the effect below removes the parameter from the URL, and later renders must keep the message.
+  const [authFailed] = useState(
+    () => authFailedProp ?? new URLSearchParams(window.location.search).has('auth_error'),
+  );
 
   const check = useCallback(async () => {
     try {
