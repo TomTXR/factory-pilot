@@ -41,7 +41,11 @@ function sessionCookie(c: Context, token: string, maxAgeMs: number): void {
 }
 
 /** Builds the sign-in routes (mounted under /api/auth) and the middleware that protects other routes. */
-export function createAuth(auth: AuthDeps, now: () => Date): { routes: Hono; requireUser: MiddlewareHandler } {
+export function createAuth(
+  auth: AuthDeps,
+  now: () => Date,
+  onSignIn: (user: User) => Promise<void>,
+): { routes: Hono; requireUser: MiddlewareHandler } {
   // Pending Google sign-ins by state. Entries are single use and short lived.
   const pending = new Map<string, PendingLogin>();
   const purgePending = () => {
@@ -49,6 +53,7 @@ export function createAuth(auth: AuthDeps, now: () => Date): { routes: Hono; req
   };
 
   async function startSession(c: Context, user: User): Promise<void> {
+    await onSignIn(user);
     const token = newToken();
     await auth.sessions.create(user.id, hashToken(token), new Date(now().getTime() + SESSION_TTL_MS));
     sessionCookie(c, token, SESSION_TTL_MS);
