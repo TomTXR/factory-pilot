@@ -21,6 +21,40 @@ export async function fetchVersion(fetchFn: typeof fetch = fetch): Promise<strin
   }
 }
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+}
+
+/** `google` shows the Google button, `test` the labelled synthetic sign-in (previews, CI, local). */
+export type SignInMode = 'google' | 'test';
+
+/** Returns the signed-in user, or null when there is no valid session. Throws when the API is unreachable. */
+export async function fetchMe(fetchFn: typeof fetch = (...a) => fetch(...a)): Promise<User | null> {
+  const res = await fetchFn('/api/auth/me');
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error(`auth check failed with status ${res.status}`);
+  return (await res.json()) as User;
+}
+
+export async function fetchSignInMode(fetchFn: typeof fetch = (...a) => fetch(...a)): Promise<SignInMode> {
+  const res = await fetchFn('/api/auth/config');
+  if (!res.ok) throw new Error(`auth config failed with status ${res.status}`);
+  const body = (await res.json()) as { mode?: unknown };
+  return body.mode === 'google' ? 'google' : 'test';
+}
+
+export async function testSignIn(fetchFn: typeof fetch = (...a) => fetch(...a)): Promise<void> {
+  const res = await fetchFn('/api/auth/test-login', { method: 'POST' });
+  if (!res.ok) throw new Error(`test sign-in failed with status ${res.status}`);
+}
+
+export async function signOut(fetchFn: typeof fetch = (...a) => fetch(...a)): Promise<void> {
+  const res = await fetchFn('/api/auth/logout', { method: 'POST' });
+  if (!res.ok) throw new Error(`sign-out failed with status ${res.status}`);
+}
+
 export type Country = 'NL' | 'DE';
 export type PropertyType = 'house' | 'apartment' | 'other';
 
@@ -58,7 +92,7 @@ export interface Property {
   notes: string | null;
 }
 
-/** Failed API call. `fieldErrors` is set for a 400 response, `duplicate` for a 409. */
+/** Failed API call. `fieldErrors` is set for a 400 response, `duplicate` for a 409, `unauthorized` for a 401. */
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -70,6 +104,10 @@ export class ApiError extends Error {
 
   get duplicate(): boolean {
     return this.status === 409;
+  }
+
+  get unauthorized(): boolean {
+    return this.status === 401;
   }
 }
 
@@ -89,6 +127,7 @@ async function request(fetchFn: typeof fetch, path: string, init?: RequestInit):
   }
   if (res.ok) return res;
   const body = (await res.json().catch(() => ({}))) as { error?: string; errors?: Record<string, string> };
+  if (res.status === 401) throw new ApiError('You are not signed in.', 401);
   if (res.status === 400) throw new ApiError('Please correct the highlighted fields.', 400, body.errors);
   if (res.status === 409) throw new ApiError(body.error ?? 'This property already exists', 409);
   if (res.status === 404) throw new ApiError('This property no longer exists.', 404);

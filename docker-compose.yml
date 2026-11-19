@@ -21,6 +21,11 @@ services:
     build: ./api
     environment:
       DATABASE_URL: postgres://pilot:${POSTGRES_PASSWORD:-pilot}@db:5432/pilot
+      # Names the stack (pilot-prod, pilot-pr-<n>, pilot-dev). Production never gets the test sign-in.
+      DEPLOY_PROJECT: ${COMPOSE_PROJECT_NAME:-pilot-dev}
+      GOOGLE_CLIENT_ID: ${PILOT_GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${PILOT_GOOGLE_CLIENT_SECRET:-}
+      PUBLIC_BASE_URL: https://pilot.domigo.com
     depends_on:
       db:
         condition: service_healthy
