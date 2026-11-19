@@ -106,9 +106,18 @@ jobs:
           HOST: ${{ steps.target.outputs.host }}
           SHA: ${{ inputs.sha }}
         run: |
-          body="Preview ready: https://$HOST (commit ${SHA:0:7}). CI passed."
-          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --body "$body" 2>/dev/null \
-            || gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "$body"
+          # Update only our own preview comment, found by its marker. Editing the "last" comment edited the
+          # newest bot comment, which could be a rework request: it erased the builder's
+          # instructions and the rework marker that the rework limit counts (PR #45).
+          marker='<!-- factory:preview -->'
+          body="$marker"$'\n'"Preview ready: https://$HOST (commit ${SHA:0:7}). CI passed."
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate | jq -rs --arg m "$marker" \
+            '[.[][] | select(.user.login == "github-actions[bot]" and (.body | startswith($m)))] | last | .id // empty')
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" >/dev/null
+          else
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "$body"
+          fi
 
       - name: Ready for human review?
         if: inputs.kind == 'preview'

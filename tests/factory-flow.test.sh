@@ -854,5 +854,10 @@ jq -n '[{number:18, head:{ref:"factory/issue-5-2"}}]' > "$FX/open_pulls.json"
 "$SCRIPT" conflicts >/dev/null 2>&1
 check "MC7 only exact factory/issue-<n> branches are checked (as in land.yml)" no "pr comment"
 
+
+# PV. The preview comment must never edit another bot comment (rework requests carry the rework count).
+if grep -rq -- "--edit-last" "$ROOT/.github/workflows" "$ROOT/.github/scripts"; then fail=$((fail+1)); echo "FAIL PV1 --edit-last can overwrite a rework comment"; else pass=$((pass+1)); echo "ok   PV1 no --edit-last in workflows or scripts"; fi
+grep -q "factory:preview" "$ROOT/.github/workflows/deploy-target.yml" && { pass=$((pass+1)); echo "ok   PV2 preview comment found by its marker"; } || { fail=$((fail+1)); echo "FAIL PV2 preview marker"; }
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
