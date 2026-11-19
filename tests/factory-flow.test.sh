@@ -849,6 +849,10 @@ check "MC5 closed stories are skipped" no "pr comment 16"
 cifx factory:agent-review false
 "$SCRIPT" ci-failed 16 777 sha1 >/dev/null 2>&1
 check "MC6 a CI rework with a conflict marks the head as told" yes "^<!-- factory:conflict sha1 -->$"
+cifx factory:agent-review false
+jq -n '[{number:18, head:{ref:"factory/issue-5-2"}}]' > "$FX/open_pulls.json"
+"$SCRIPT" conflicts >/dev/null 2>&1
+check "MC7 only exact factory/issue-<n> branches are checked (as in land.yml)" no "pr comment"
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
