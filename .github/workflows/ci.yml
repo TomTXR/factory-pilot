@@ -20,12 +20,6 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0   # the knowledge check diffs against the PR base
-      - name: Knowledge wiki is updated with the change
-        if: github.event_name == 'pull_request'
-        env:   # via env, not inline: branch names are untrusted input
-          BASE: ${{ github.base_ref }}
-          BRANCH: ${{ github.head_ref }}
-        run: git diff --name-only "origin/$BASE...HEAD" | bash .github/scripts/knowledge-check.sh "$BRANCH"
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -37,6 +31,13 @@ jobs:
       - run: npm test
       - name: Factory flow script tests
         run: bash tests/factory-flow.test.sh && bash tests/pilot-deploy-env.test.sh && bash tests/knowledge-check.test.sh
+      - name: Knowledge wiki is updated with the change
+        # Last and also after a failure: the CI-failure rework then reports all failures in one round.
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:   # via env, not inline: branch names are untrusted input
+          BASE: ${{ github.base_ref }}
+          BRANCH: ${{ github.head_ref }}
+        run: git diff --name-only "origin/$BASE...HEAD" | bash .github/scripts/knowledge-check.sh "$BRANCH"
 
   e2e:
     needs: checks
