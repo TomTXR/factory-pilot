@@ -214,6 +214,20 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Teststraat 12' })).toBeInTheDocument();
   });
 
+  it('does not show a stored selection that belongs to another account', async () => {
+    localStorage.setItem('selectedPropertyId', 'owned-by-other-account');
+    render(<App loadHealth={ok} api={fakeApi([property({ id: 'mine', street: 'Mijnstraat' })])} />);
+    expect(await screen.findByRole('heading', { name: 'Mijnstraat 12' })).toBeInTheDocument();
+    expect(localStorage.getItem('selectedPropertyId')).toBe('mine');
+  });
+
+  it('shows the empty state and forgets a stored selection when the account has no properties', async () => {
+    localStorage.setItem('selectedPropertyId', 'owned-by-other-account');
+    render(<App loadHealth={ok} api={fakeApi([])} />);
+    expect(await screen.findByRole('button', { name: 'Add your first property' })).toBeInTheDocument();
+    expect(localStorage.getItem('selectedPropertyId')).toBeNull();
+  });
+
   it('switches between properties and shows only filled-in characteristics', async () => {
     const user = userEvent.setup();
     const rows = [
