@@ -71,19 +71,31 @@ jobs:
         id: ready
         env:
           PR: ${{ steps.pr.outputs.number }}
+          # The update is done the way a human clicks "Update branch": as a collaborator
+          # (the machine account), so CI starts. The workflow token's merge commit is
+          # treated like an outside contributor's and its CI waits for approval (#35).
+          BOT_TOKEN: ${{ secrets.FACTORY_BOT_TOKEN }}
+          REQUIRED_CHECKS: "checks e2e"
         run: |
-          state=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json mergeStateStatus --jq .mergeStateStatus)
-          if [ "$state" = "BEHIND" ]; then gh pr update-branch "$PR" --repo "$GITHUB_REPOSITORY"; sleep 15; fi  # merge, not rebase: branches may contain merge commits
+          reason=""; updates=0; since=$(date +%s); head=""
           for i in $(seq 1 100); do
             state=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json mergeStateStatus --jq .mergeStateStatus)
+            head=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)
             case "$state" in
               CLEAN|HAS_HOOKS|UNSTABLE) echo "mergeable: $state"; exit 0 ;;
+              BEHIND)
+                # main moved (another release or a factory change): update again, like a human would.
+                if [ -z "$BOT_TOKEN" ]; then reason="the PR is behind main and the repository secret FACTORY_BOT_TOKEN (classic token of the machine account) is missing"; break; fi
+                if [ "$updates" -ge 3 ]; then reason="main moved 3 times during the release"; break; fi
+                # merge, not rebase: branches may contain merge commits
+                GH_TOKEN="$BOT_TOKEN" gh pr update-branch "$PR" --repo "$GITHUB_REPOSITORY" || { reason="updating the branch as the machine account failed"; break; }
+                updates=$((updates + 1)); since=$(date +%s); sleep 15; continue ;;
               DIRTY)
                 # Conflict with main (e.g. another story was merged first). Only the
                 # builder's own PR (factory/issue-<n>) can be revised by the builder;
                 # any other branch blocks for a human as before.
-                head=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefName --jq .headRefName)
-                [ "$head" = "factory/issue-$ISSUE" ] || break
+                branch=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefName --jq .headRefName)
+                [ "$branch" = "factory/issue-$ISSUE" ] || { reason="the PR conflicts with main"; break; }
                 .github/scripts/factory-flow.sh rework "$ISSUE" "$(printf 'The release of PR #%s was stopped: it conflicts with the current `main` (another change was merged first). Merge the current `main` into this branch, resolve the conflicts so that both the existing features on `main` and this story work, run all checks, and push.' "$PR")"
                 echo "conflict=true" >> "$GITHUB_OUTPUT"
                 # The script may have blocked the story (rework limit); its message is then final.
@@ -91,14 +103,26 @@ jobs:
                   .github/scripts/factory-flow.sh status "$ISSUE" "The approved release could not be merged: PR #$PR conflicts with the current main. Agent: Reworking resolves the conflict; a new test request follows and needs a new /approve."
                 fi
                 exit 0 ;;
-              BLOCKED_BY_FAILURE) break ;;
+              BLOCKED_BY_FAILURE) reason="required checks failed"; break ;;
             esac
-            if gh pr checks "$PR" --repo "$GITHUB_REPOSITORY" --required 2>/dev/null | awk '{print $2}' | grep -q fail; then break; fi
+            # Do not wait silently: runs held for approval, or required checks that never start.
+            if [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$head&status=action_required" --jq .total_count)" -gt 0 ]; then
+              reason="CI on ${head:0:7} waits for a maintainer's approval (action_required)"; break
+            fi
+            seen=$(gh api "repos/$GITHUB_REPOSITORY/commits/$head/check-runs?per_page=100" --jq '[.check_runs[].name] | join(" ")')
+            missing=""; for c in $REQUIRED_CHECKS; do echo " $seen " | grep -q " $c " || missing="$missing $c"; done
+            if [ -n "$missing" ] && [ $(( $(date +%s) - since )) -gt 180 ]; then
+              reason="required checks did not start within 3 minutes on ${head:0:7}:$missing"; break
+            fi
+            if gh pr checks "$PR" --repo "$GITHUB_REPOSITORY" --required 2>/dev/null | awk '{print $2}' | grep -q fail; then reason="required checks failed"; break; fi
             sleep 15
           done
+          [ -n "$reason" ] || reason="merge state \`$state\` after waiting 25 minutes"
           gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label factory:approved-for-production --add-label factory:blocked
           .github/scripts/board-status.sh "$NODE" Blocked
-          .github/scripts/factory-flow.sh notify "$ISSUE" "**Blocked:** cannot release PR #$PR: merge state \`$state\` (conflict, failing or missing required checks). Decide, then reply \`/retry\`."
+          # The mark lets a new /approve retry exactly this release (same PR head).
+          .github/scripts/factory-flow.sh status "$ISSUE" "Release blocked: $reason." "release-blocked $PR $head"
+          .github/scripts/factory-flow.sh notify "$ISSUE" "**Blocked:** cannot release PR #$PR: $reason. Fix the cause, then reply \`/approve\` to try the release again."
           exit 1
 
       - name: Merge
