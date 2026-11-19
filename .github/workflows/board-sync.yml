@@ -41,6 +41,7 @@ jobs:
             factory:done) s="Done" ;;
             factory:blocked) s="Blocked" ;;
             factory:split) s="Split" ;;
+            factory:waiting) s="Waiting" ;;
             factory:human-task) s="Human Task" ;;
             factory:cancelled) s="Cancelled" ;;
             *) s="" ;;

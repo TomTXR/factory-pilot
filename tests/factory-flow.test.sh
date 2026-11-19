@@ -13,6 +13,8 @@ echo "$*" >> "$GH_LOG"
 if [ "$1" = "api" ]; then
   path=""; for a in "$@"; do case "$a" in repos/*) path="$a"; break ;; esac; done
   case "$path" in
+    */dependencies/blocked_by*) case "$*" in *"-X POST"*) echo '{}' ;; *) dn=${path%/dependencies*}; dn=${dn##*/}; cat "$FX/blocked_by-$dn.json" 2>/dev/null || echo '[]' ;; esac ;;
+    */dependencies/blocking*) dn=${path%/dependencies*}; dn=${dn##*/}; cat "$FX/blocking-$dn.json" 2>/dev/null || echo '[]' ;;
     */sub_issues*) case "$*" in *"-X POST"*) echo '{}' ;; *) pn=${path%/sub_issues*}; pn=${pn##*/}; cat "$FX/sub_issues-$pn.json" 2>/dev/null || cat "$FX/sub_issues.json" 2>/dev/null || echo '[]' ;; esac ;;
     */issues\?*) cat "$FX/bot_issues.json" 2>/dev/null || echo '[]' ;;
     */issues) [ -n "${GH_FAIL_CREATE:-}" ] && exit 1; n=$(( $(cat "$FX/next" 2>/dev/null || echo 100) )); echo $((n+1)) > "$FX/next"; echo "{\"number\":$n,\"id\":$((n*1000))}" ;;
@@ -46,7 +48,7 @@ setup() { # head_ref review_author review_body
   : > "$GH_LOG"
   jq -n --arg ref "$1" '{state:"open", head:{ref:$ref, sha:"sha1"}}' > "$FX/pull.json"
   jq -n --arg u "$2" --arg b "$3" '{user:{login:$u}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"
-  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/bot_issues.json" "$FX/next" "$WORK/out"
+  echo '[]' > "$FX/reviews.json"; echo '[]' > "$FX/comments.json"; rm -f "$FX"/issue*.json "$FX/comment.json" "$FX"/sub_issues*.json "$FX/bot_issues.json" "$FX"/blocked_by-*.json "$FX"/blocking-*.json "$FX/next" "$WORK/out"
   jq -n '[{number:16, head:{ref:"factory/issue-5"}}, {number:17, head:{ref:"factory/issue-50"}}]' > "$FX/open_pulls.json"
 }
 check() { # name expected(yes|no) pattern
@@ -496,6 +498,63 @@ jq -n '{user:{login:"alice", type:"User"}, body:"/followup x", html_url:"https:/
 "$SCRIPT" followups 5 900 >/dev/null 2>&1
 check "F8 retry reuses the story created before the failure" no "api -X POST repos/owner/repo/issues "
 check "F8 retry lists the existing story" yes "#77 Shared household access"
+
+
+# D. Dependencies (GitHub "blocked by"): planning runs, the build waits for open blockers.
+dcmd() { # state-label body
+  setup factory/issue-5 agentbot x
+  jq -n --arg l "$1" '{node_id:"I_test", id:5000, title:"T", labels:[{name:"factory:story"},{name:$l}]}' > "$FX/issue-5.json"
+  jq -n --arg b "$2" '{user:{login:"alice", type:"User"}, body:$b, html_url:"https://x/c"}' > "$FX/comment.json"
+}
+dcmd factory:plan-review "/approve"; jq -n '[{number:28, state:"open", state_reason:null}]' > "$FX/blocked_by-5.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "D1 approved plan with an open blocker waits" yes "issue edit 5 .*--add-label factory:waiting"
+check "D1 builder not started" no "add-label factory:plan-approved"
+check "D1 ack names the blocker" yes "The build waits for #28"
+
+dcmd factory:plan-review "/approve"; jq -n '[{number:28, state:"closed", state_reason:"completed"}]' > "$FX/blocked_by-5.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "D2 closed blocker does not hold the build" yes "issue edit 5 .*--add-label factory:plan-approved"
+
+dunblock() { # blocker-reason other-blocker-state
+  setup factory/issue-5 agentbot x
+  jq -n '[{number:32, state:"open"}]' > "$FX/blocking-28.json"
+  jq -n '{node_id:"I_32", labels:[{name:"factory:story"},{name:"factory:waiting"}]}' > "$FX/issue-32.json"
+  jq -n --arg r "$1" --arg o "$2" '[{number:28, state:"closed", state_reason:$r}] + (if $o == "" then [] else [{number:29, state:$o, state_reason:null}] end)' > "$FX/blocked_by-32.json"
+  "$SCRIPT" unblock 28 >/dev/null 2>&1
+}
+dunblock completed ""
+check "D3 last blocker done starts the build" yes "issue edit 32 .*--add-label factory:plan-approved"
+check "D3 comment" yes "All blockers are done"
+dunblock not_planned ""
+check "D4 cancelled blocker keeps waiting" no "issue edit 32 .*--add-label factory:plan-approved"
+check "D4 asks the approvers" yes "closed without being completed"
+dunblock completed open
+check "D5 another open blocker keeps waiting" no "issue edit 32 "
+
+dcmd factory:waiting "/start"; jq -n '[{number:28, state:"open", state_reason:null}]' > "$FX/blocked_by-5.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "D6 /start builds a waiting story anyway" yes "issue edit 5 .*--add-label factory:plan-approved"
+
+setup factory/issue-5 agentbot x
+jq -n '[{number:32, state:"open"}]' > "$FX/blocking-28.json"
+jq -n '{node_id:"I_32", labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-32.json"
+jq -n '[{number:28, state:"closed", state_reason:"completed"}]' > "$FX/blocked_by-32.json"
+"$SCRIPT" unblock 28 >/dev/null 2>&1
+check "D7 a story not yet approved is not started by unblock" no "issue edit 32 "
+
+fcmd factory:in-progress "/followup shared household access" unclear false
+check "D8 follow-up is blocked by its origin story" yes "issues/100/dependencies/blocked_by -F issue_id="
+
+setup factory/issue-5 agentbot x; splitfx "$SPLIT_PLAN"
+jq -n '{node_id:"I_test", id:5000, labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '{id:100000}' > "$FX/issue-100.json"
+jq -n '[{number:9, state:"open", state_reason:null}]' > "$FX/blocked_by-5.json"
+jq -n '{id:9000}' > "$FX/issue-9.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "D9 split part 2 is blocked by part 1" yes "issues/101/dependencies/blocked_by -F issue_id=100000"
+check "D9 split part 1 inherits the parent's open blockers" yes "issues/100/dependencies/blocked_by -F issue_id=9000"
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

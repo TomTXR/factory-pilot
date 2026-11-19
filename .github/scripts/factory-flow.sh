@@ -27,6 +27,11 @@
 #   factory-flow.sh child-closed <issue>     a part of a split story was closed: start the next
 #                                            part, or close the parent when all parts are closed
 #   factory-flow.sh create-tasks <issue> <assignee>  approved plan lists human tasks: create them
+#   factory-flow.sh unblock <issue>          <issue> was closed: start waiting stories it blocked
+#
+# Dependencies are GitHub's native "blocked by" relations. Planning runs at once;
+# a story whose plan is approved while a blocker is open waits (factory:waiting)
+# and its build starts when the last blocker is completed.
 #   factory-flow.sh followups <issue> <comment-id>   an approver asked for follow-up tickets:
 #                                            write them (write-followups.sh), create them and start their breakdown
 #
@@ -47,7 +52,7 @@ MAX_REWORK=3
 BOT="${FACTORY_BOT_LOGIN:-github-actions[bot]}"
 AGENTS="${FACTORY_AGENT_LOGINS:-}"
 REVIEW_MARKER='<!-- openhands-review-run:'
-STATE_LABELS="factory:breakdown factory:plan-review factory:plan-approved factory:in-progress factory:agent-review factory:human-review factory:rework factory:approved-for-production factory:deploying factory:blocked factory:split factory:done factory:cancelled"
+STATE_LABELS="factory:breakdown factory:plan-review factory:plan-approved factory:in-progress factory:agent-review factory:human-review factory:rework factory:approved-for-production factory:deploying factory:blocked factory:waiting factory:split factory:done factory:cancelled"
 here="$(cd "$(dirname "$0")" && pwd)"
 
 board() { "$here/board-status.sh" "$(gh api "repos/$R/issues/$1" | jq -r .node_id)" "$2" || echo "::warning::board update failed"; }
@@ -74,7 +79,7 @@ open_factory_prs() { # issue -> PR numbers on factory/issue-<n> (builder's branc
 }
 current_state() { # issue -> one factory state (without factory: prefix), or inbox
   local labels; labels=$(gh api "repos/$R/issues/$1" | jq -r '[.labels[].name] | join(" ")')
-  for st in cancelled done split blocked approved-for-production deploying human-review agent-review rework plan-approved in-progress plan-review breakdown; do
+  for st in cancelled done split blocked waiting approved-for-production deploying human-review agent-review rework plan-approved in-progress plan-review breakdown; do
     case " $labels " in *" factory:$st "*) echo "$st"; return;; esac
   done
   echo inbox
@@ -103,6 +108,14 @@ split_parts() { # issue dir -> proposed stories of the plan; a split needs 2 or 
 plan_tasks() { plan_blocks "$1" "$2" "Human tasks" "<!-- factory:human-tasks -->" Task; }
 open_parts() { # parent issue -> open sub-issue numbers that are stories (not human tasks), in order
   gh api "repos/$R/issues/$1/sub_issues?per_page=100" | jq -r '.[] | select(.state == "open" and (([.labels[]?.name] | index("factory:human-task")) | not)) | .number'
+}
+blockers() { # issue -> JSON array of the issues it is blocked by (number, state, state_reason)
+  gh api "repos/$R/issues/$1/dependencies/blocked_by?per_page=100" | jq -c '[.[] | {number, state, state_reason}]'
+}
+open_blockers() { blockers "$1" | jq -r '.[] | select(.state == "open") | .number'; }
+add_blocker() { # issue blocker: <issue> is blocked by <blocker>
+  local bid; bid=$(gh api "repos/$R/issues/$2" | jq -r .id)
+  gh api -X POST "repos/$R/issues/$1/dependencies/blocked_by" -F issue_id="$bid" >/dev/null || echo "::warning::could not mark #$1 as blocked by #$2"
 }
 open_tasks() { # story -> open human-task sub-issue numbers
   gh api "repos/$R/issues/$1/sub_issues?per_page=100" | jq -r '.[] | select(.state == "open" and ([.labels[]?.name] | index("factory:human-task"))) | .number'
@@ -305,8 +318,19 @@ case "$cmd" in
             "$0" create-tasks "$issue" "$author"
             tasks_note=" $ntasks human task(s) were created and assigned to you (see above); the release waits for them."
           fi
+          waiting=$(open_blockers "$issue" | sed 's/^/#/' | paste -sd' ' -)
+          if [ -n "$waiting" ]; then
+            set_state "$issue" factory:waiting; board "$issue" Waiting
+            ack "$issue" "$cid" "${read_as}**Plan approved** by @$author. The build waits for $waiting (blocked by). It starts automatically when they are done; \`/start\` builds now anyway.$tasks_note"
+          else
+            set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
+            ack "$issue" "$cid" "${read_as}**Plan approved** by @$author. The builder starts within about 5 minutes.$tasks_note"
+          fi
+        fi ;;
+      waiting:approve)
+        if [ "$explicit" = yes ]; then
           set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
-          ack "$issue" "$cid" "${read_as}**Plan approved** by @$author. The builder starts within about 5 minutes.$tasks_note"
+          ack "$issue" "$cid" "**Build started** by @$author although it is blocked by $(open_blockers "$issue" | sed 's/^/#/' | paste -sd' ' -). The builder starts within about 5 minutes."
         fi ;;
       plan-review:changes)
         set_state "$issue" factory:breakdown; board "$issue" Breakdown
@@ -401,6 +425,24 @@ case "$cmd" in
       fi
     fi
     "$0" child-closed "$issue"
+    "$0" unblock "$issue"
+    ;;
+
+  unblock)
+    issue="$1"
+    for w in $(gh api "repos/$R/issues/$issue/dependencies/blocking?per_page=100" | jq -r '.[] | select(.state == "open") | .number'); do
+      [ "$(current_state "$w")" = waiting ] || { echo "#$w is not waiting"; continue; }
+      bl=$(blockers "$w")
+      if [ "$(echo "$bl" | jq '[.[] | select(.state == "open")] | length')" -gt 0 ]; then echo "#$w still blocked"; continue; fi
+      dropped=$(echo "$bl" | jq -r '.[] | select(.state_reason != "completed") | "#\(.number)"' | paste -sd' ' -)
+      if [ -n "$dropped" ]; then
+        gh issue comment "$w" --repo "$R" --body "Blocker $dropped was closed without being completed. This story keeps waiting. Reply \`/start\` to build it anyway, or \`/cancel\` to drop it." >/dev/null
+        echo "#$w: blocker dropped, asked the approvers"; continue
+      fi
+      set_state "$w" factory:plan-approved; board "$w" "In Progress"
+      gh issue comment "$w" --repo "$R" --body "All blockers are done (last: #$issue). The builder starts within about 5 minutes." >/dev/null
+      echo "#$w unblocked -> plan approved"
+    done
     ;;
 
   split)
@@ -422,6 +464,8 @@ case "$cmd" in
       num=$(echo "$created" | jq -r .number); id=$(echo "$created" | jq -r .id)
       gh api -X POST "repos/$R/issues/$issue/sub_issues" -F sub_issue_id="$id" >/dev/null || echo "::warning::could not link #$num as sub-issue of #$issue"
       board "$num" Inbox
+      if [ -n "$prev" ]; then add_blocker "$num" "$prev"
+      else for b in $(open_blockers "$issue"); do add_blocker "$num" "$b"; done; fi
       [ -n "$first" ] || first="$num"
       list="$list"$'\n'"- #$num $title"
       prev="$num"
@@ -493,12 +537,14 @@ case "$cmd" in
       created=$(gh api -X POST "repos/$R/issues" -f title="$title" -F body=@"$dir/$k.issue" -f 'labels[]=factory:story')
       num=$(echo "$created" | jq -r .number)
       board "$num" Inbox
+      # Deferred work builds on the story it came from.
+      add_blocker "$num" "$issue"
       # The approver asked for it: the breakdown starts; the build still needs plan approval.
       FACTORY_START_APPROVED=1 "$0" start "$num" >/dev/null
       list="$list"$'\n'"- #$num $title"
     done
     rm -rf "$dir"
-    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Follow-up stories created** (requested by @%s):\n%s\n\nTheir breakdown starts now; you get a plan to review for each. Nothing is built before you approve that plan.' "$marker" "$author" "$list")" >/dev/null
+    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Follow-up stories created** (requested by @%s):\n%s\n\nTheir breakdown starts now; you get a plan to review for each. Each is blocked by this story: after plan approval its build waits until this story is done.' "$marker" "$author" "$list")" >/dev/null
     echo "issue #$issue: $n follow-up(s) created"
     ;;
 
@@ -543,5 +589,5 @@ case "$cmd" in
     echo "issue #$issue reopened -> inbox"
     ;;
 
-  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command|closed|reopened|split|child-closed|create-tasks|followups ..." >&2; exit 2 ;;
+  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command|closed|reopened|split|child-closed|create-tasks|followups|unblock ..." >&2; exit 2 ;;
 esac
