@@ -16,6 +16,11 @@ export interface GoogleIdentity {
 export interface UserStore {
   /** Finds the account for this Google user id or creates it, and records the login time. */
   signIn: (identity: GoogleIdentity) => Promise<User>;
+  /**
+   * Permanently deletes the account, its sessions and its properties in one transaction.
+   * Returns the number of deleted properties.
+   */
+  deleteAccount: (userId: string) => Promise<number>;
 }
 
 export interface SessionStore {
@@ -61,6 +66,9 @@ export const TEST_USERS: Record<string, GoogleIdentity> = {
   b: { sub: 'test-user-b', email: 'test.user.two@example.com', name: 'Test User Two' },
   // Only used by the empty-state e2e test: no spec adds properties for this user.
   c: { sub: 'test-user-c', email: 'test.user.three@example.com', name: 'Test User Three' },
+  // Only used by the account deletion e2e tests (d: desktop run, e: mobile run), which delete their user.
+  d: { sub: 'test-user-d', email: 'test.user.four@example.com', name: 'Test User Four' },
+  e: { sub: 'test-user-e', email: 'test.user.five@example.com', name: 'Test User Five' },
 };
 
 export function newToken(): string {

@@ -2,7 +2,10 @@ import { type AuthDeps, type AuthMode, type GoogleClient, SESSION_TTL_MS, type S
 import { normaliseKey, type Property, type PropertyInput, type PropertyRepository } from './properties.js';
 
 /** In-memory repository for route tests. Enforces the same per-account rules as the database. */
-export function memoryRepository(): PropertyRepository & { seedUnowned: (input: PropertyInput) => void } {
+export function memoryRepository(): PropertyRepository & {
+  seedUnowned: (input: PropertyInput) => void;
+  removeAllOf: (userId: string) => number;
+} {
   const rows = new Map<string, Property & { account: string | null }>();
   let seq = 0;
   const strip = (row: Property & { account: string | null }): Property => {
@@ -45,6 +48,12 @@ export function memoryRepository(): PropertyRepository & { seedUnowned: (input: 
     async remove(userId, id) {
       return own(userId, id) ? rows.delete(id) : false;
     },
+    /** Test helper: what deleting an account does to its properties. */
+    removeAllOf(userId) {
+      const ids = [...rows.values()].filter((p) => p.account === userId).map((p) => p.id);
+      for (const id of ids) rows.delete(id);
+      return ids.length;
+    },
     /** Test helper: a property without an account, which no account can see. */
     seedUnowned(input) {
       seq += 1;
@@ -63,7 +72,7 @@ export interface MemoryAuth {
 }
 
 /** In-memory user and session stores for route tests. */
-export function memoryAuth(): MemoryAuth {
+export function memoryAuth(removeProperties: (userId: string) => number = () => 0): MemoryAuth {
   const users = new Map<string, User & { sub: string }>();
   const sessions = new Map<string, { userId: string; lastUsed: Date; expiresAt: Date }>();
   return {
@@ -80,6 +89,11 @@ export function memoryAuth(): MemoryAuth {
         };
         users.set(user.id, user);
         return { id: user.id, email: user.email, name: user.name };
+      },
+      async deleteAccount(userId) {
+        for (const [k, s] of sessions) if (s.userId === userId) sessions.delete(k);
+        users.delete(userId);
+        return removeProperties(userId);
       },
     },
     sessions: {
@@ -108,7 +122,11 @@ export function memoryAuth(): MemoryAuth {
 }
 
 /** Auth dependencies for route tests: in-memory stores and, in google mode, a stubbed Google. */
-export function testAuth(mode: AuthMode = 'test', google?: GoogleClient): AuthDeps & MemoryAuth {
-  const stores = memoryAuth();
+export function testAuth(
+  mode: AuthMode = 'test',
+  google?: GoogleClient,
+  removeProperties?: (userId: string) => number,
+): AuthDeps & MemoryAuth {
+  const stores = memoryAuth(removeProperties);
   return { ...stores, mode, google };
 }

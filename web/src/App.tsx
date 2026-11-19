@@ -3,6 +3,7 @@ import {
   ApiError,
   type ApiStatus,
   createPropertiesApi,
+  deleteAccount,
   fetchHealth,
   fetchVersion,
   type Property,
@@ -10,6 +11,7 @@ import {
   type PropertyFormValues,
   type User,
 } from './api';
+import { AccountView } from './components/AccountView';
 import { ConfirmDeleteDialog } from './components/ConfirmDeleteDialog';
 import { EmptyState } from './components/EmptyState';
 import { emptyValues, PropertyForm, valuesFromProperty } from './components/PropertyForm';
@@ -53,6 +55,8 @@ export function App({
   user,
   onSignOut,
   onUnauthorized,
+  doDeleteAccount = deleteAccount,
+  onAccountDeleted,
 }: {
   loadHealth?: () => Promise<ApiStatus>;
   loadVersion?: () => Promise<string | null>;
@@ -61,6 +65,9 @@ export function App({
   onSignOut?: () => void | Promise<void>;
   /** Called when the API answers 401, so the caller can show the login screen. */
   onUnauthorized?: () => void;
+  doDeleteAccount?: () => Promise<void>;
+  /** Called after the account was deleted, so the caller can show the login screen. */
+  onAccountDeleted?: () => void;
 }) {
   const [status, setStatus] = useState<ApiStatus>('loading');
   const [version, setVersion] = useState<string | null | undefined>(undefined);
@@ -72,6 +79,7 @@ export function App({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
 
   const checkUnauthorized = useCallback(
     (err: unknown) => {
@@ -168,7 +176,27 @@ export function App({
     }
   }
 
+  async function deleteOwnAccount() {
+    try {
+      await doDeleteAccount();
+    } catch (err) {
+      checkUnauthorized(err);
+      throw err;
+    }
+    onAccountDeleted?.();
+  }
+
   function renderMain() {
+    if (showAccount && user) {
+      return (
+        <AccountView
+          user={user}
+          propertyCount={load === 'ready' ? properties.length : null}
+          onBack={() => setShowAccount(false)}
+          onDeleteAccount={deleteOwnAccount}
+        />
+      );
+    }
     if (load === 'loading') {
       return (
         <p role="status" className="py-12 text-center text-slate-600">
@@ -240,9 +268,15 @@ export function App({
           </span>
           {user && onSignOut && (
             <>
-              <span data-testid="signed-in-user" className="max-w-40 truncate text-sm text-slate-700">
+              <button
+                type="button"
+                data-testid="signed-in-user"
+                aria-label={`Account of ${user.name}`}
+                onClick={() => setShowAccount(true)}
+                className="max-w-40 truncate text-sm text-slate-700 underline"
+              >
                 {user.name}
-              </span>
+              </button>
               <button
                 type="button"
                 disabled={signingOut}

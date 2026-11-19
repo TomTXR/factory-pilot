@@ -20,6 +20,15 @@ export function createUserStore(sql: Sql): UserStore {
         returning id, email, display_name`;
       return toUser(rows[0] as UserRow);
     },
+    async deleteAccount(userId) {
+      // Properties are deleted explicitly: the foreign key has no cascade on purpose, so a deletion
+      // of a user anywhere else still fails. Sessions go through their on delete cascade.
+      return sql.begin(async (tx) => {
+        const properties = await tx`delete from properties where account_user_id = ${userId} returning id`;
+        await tx`delete from users where id = ${userId}`;
+        return properties.length;
+      });
+    },
   };
 }
 

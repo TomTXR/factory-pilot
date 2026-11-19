@@ -160,3 +160,12 @@ export function createPropertiesApi(fetchFn: typeof fetch = (...args) => fetch(.
 export function propertyLabel(p: Property): string {
   return p.displayName ?? `${p.street} ${p.houseNumber}${p.houseNumberAddition ? ` ${p.houseNumberAddition}` : ''}`;
 }
+
+/** Permanently deletes the signed-in account with all its properties. The server needs the typed confirmation. */
+export async function deleteAccount(fetchFn: typeof fetch = (...a) => fetch(...a)): Promise<void> {
+  await request(fetchFn, '/api/auth/account', {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ confirm: 'DELETE' }),
+  });
+}
