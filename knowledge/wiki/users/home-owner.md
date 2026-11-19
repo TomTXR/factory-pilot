@@ -24,4 +24,4 @@ Private home owner in the Netherlands or Germany who maintains a family home and
 ## See Also
 
 - [Home Maintenance Log](../product/home-maintenance-log.md)
-- [GO value categories](../domain/go-categories.md)
+- [GO value categories](../product/go-categories.md)
