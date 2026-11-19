@@ -1,7 +1,7 @@
 # Story Workflow
 
 > Sources: Product owner decisions in the factory spike, 2026-11-19
-> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Comments on human tasks](../../raw/process/2026-11-19-human-task-comments.md); [Failed CI sends a PR back](../../raw/process/2026-11-19-ci-failure-rework.md)
+> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Comments on human tasks](../../raw/process/2026-11-19-human-task-comments.md); [Failed CI sends a PR back](../../raw/process/2026-11-19-ci-failure-rework.md); [Release branch update](../../raw/process/2026-11-19-release-branch-update.md); [Silent stalls and the watchdog](../../raw/process/2026-11-19-silent-stalls-watchdog.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -21,7 +21,7 @@ The board columns say who acts next: columns starting with **Human:** wait for a
 | In Progress, Agent Review, Rework | Builder (Sonnet) and reviewer (Opus); at most 3 rework loops. A failed CI run sends the PR back to the builder with the failing tests (the reviewer does not review red PRs). After each push to main, a factory PR that conflicts goes back to the builder to merge main (GitHub runs no checks on a conflicting PR) | None |
 | Human Review | Approvers test the preview | Changes revise the PR; only an explicit `/approve` releases, and only when all human tasks are closed |
 | Deploying, Done | Factory merges and deploys | None |
-| Blocked | Human | `/retry` |
+| Blocked | Human | `/retry` restarts the agents' step; after a blocked release `/approve` retries the release |
 | Cancelled | Closed as not planned or duplicate, or `/cancel` | Reopen and `/start` |
 | Waiting | Nobody: plan approved, blocked by open issues | None; starts when blockers are done; `/start` builds anyway |
 | Split | The parts carry the work | None; closes with the parts |
@@ -86,9 +86,23 @@ Why: one person usually drives a story, and the list of approvers must exist onl
 ## Dependencies
 
 - Dependencies are GitHub's native "blocked by" relations, visible on the issue and the board.
-- The factory sets them for follow-ups (blocked by the original story) and split parts (each part by the previous one; part 1 inherits the parent's blockers). Humans add more in the GitHub UI.
+- The factory sets them for follow-ups (blocked by the original story), split parts (each part by the previous one; part 1 inherits the parent's blockers) and for dependencies the plan lists in its section "Dependencies" (set on `/approve`). Humans can add more in the GitHub UI, but plans never ask them to.
 - Planning runs at once. A story whose plan is approved while a blocker is open goes to Waiting.
 - When the last blocker is completed, the build starts automatically. A blocker closed without completion keeps the story waiting; the bot asks for `/start` or `/cancel`.
+
+
+## Release
+
+- At release the factory brings the PR up to date with main the way a human clicks "Update branch": as the machine account, so CI starts. If main moves again, it updates again.
+- Held or missing checks block the release at once, with the reason. A new `/approve` retries a blocked release.
+- While a story is being released, the release's own branch update does not change the story's state.
+- Why: the workflow token's update was treated like an outside contributor and its CI waited for approval; a human would not have had that problem. Standard GitHub flows, no custom queue.
+
+## Stalls and the watchdog
+
+- Every 15 minutes a watchdog checks the agent steps. A step without progress within its limit (Planning 30 min; Building, Reviewing, Reworking 60; Deploying 45) blocks the story, and its owners are told which step stalled.
+- An agent that decides not to act comments why and sets `factory:blocked`; the factory notifies the owners.
+- Why: on 2026-11-19 three stories stalled silently (#34, #35, #46) and each time the human noticed, after 30 minutes to 2.5 hours.
 
 ## See Also
 
