@@ -17,6 +17,8 @@ Deployment: `.github/workflows/deploy.yml` calls `deploy/server/pilot-deploy.sh`
 
 ## Working with the factory (humans)
 
+On the board, columns starting with **Human:** wait for you; **Agent:** columns need nothing from you.
+
 1. **New story:** GitHub -> Issues -> New issue -> "User story". The breakdown starts automatically.
 2. **Plan ready** (you get a notification): read the plan, then reply in a comment. Answers or change requests lead to a refined plan; `/approve` (or a clear "looks good, go ahead") starts the build.
 3. **Test request** (you get a notification with the test link): test on the preview, then reply. A description of what is wrong (or `/changes <what>`) makes the builder revise the PR; **only an explicit `/approve` releases to production**.
