@@ -859,5 +859,43 @@ check "MC7 only exact factory/issue-<n> branches are checked (as in land.yml)" n
 if grep -rq -- "--edit-last" "$ROOT/.github/workflows" "$ROOT/.github/scripts"; then fail=$((fail+1)); echo "FAIL PV1 --edit-last can overwrite a rework comment"; else pass=$((pass+1)); echo "ok   PV1 no --edit-last in workflows or scripts"; fi
 grep -q "factory:preview" "$ROOT/.github/workflows/deploy-target.yml" && { pass=$((pass+1)); echo "ok   PV2 preview comment found by its marker"; } || { fail=$((fail+1)); echo "FAIL PV2 preview marker"; }
 
+
+# RL. Release: the update of the branch is part of the release, and a blocked release is retried by /approve.
+relfx() { # state-label mark comment
+  setup factory/issue-5 agentbot x; : > "$CLASSIFY_LOG"
+  jq -n --arg l "$1" --arg m "$2" '{node_id:"I_test", labels:[{name:"factory:story"},{name:$l}], body:("story\n<!-- factory:status:start -->\n- x\n" + (if $m == "" then "" else "<!-- factory:mark " + $m + " -->\n" end) + "<!-- factory:status:end -->")}' > "$FX/issue.json"
+  jq -n --arg b "$3" '{user:{login:"alice", type:"User"}, body:$b, html_url:"https://x/c"}' > "$FX/comment.json"
+}
+for st in approved-for-production deploying; do
+  relfx factory:$st "" x; "$SCRIPT" pr-updated 16 >/dev/null 2>&1
+  check "RL1 the release's own branch update keeps $st" no "add-label factory:agent-review"
+  relfx factory:$st "" x; PREVIEW_HEALTH_CMD=true "$SCRIPT" ready-check 16 >/dev/null 2>&1
+  check "RL2 no second test request while $st" no "issue comment 5"
+  relfx factory:$st "" x; jq -n --arg b "$M
+🔄 CHANGES REQUESTED" '{user:{login:"agentbot"}, body:$b, html_url:"https://x/review"}' > "$FX/review.json"; "$SCRIPT" review 16 1 >/dev/null 2>&1
+  check "RL3 a review during the release ($st) changes nothing" no "add-label factory:rework"
+done
+relfx factory:blocked "release-blocked 16 sha1" "/approve"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "RL4 /approve retries a blocked release" yes "add-label factory:approved-for-production"
+out_has land=true && { pass=$((pass+1)); echo "ok   RL4 land output"; } || { fail=$((fail+1)); echo "FAIL RL4 missing land output"; }
+relfx factory:blocked "release-blocked 16 oldsha" "/approve"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "RL5 /approve does not release a PR that changed since the block" no "add-label factory:approved-for-production"
+check "RL5 explains /approve vs /retry" yes "retries a blocked release only"
+relfx factory:blocked "" "/approve"
+FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "RL6 /approve on a story blocked by the rework limit does not release" no "add-label factory:approved-for-production"
+relfx factory:blocked "release-blocked 16 sha1" "Looks fine now, ship it"
+FACTORY_APPROVERS=alice CLASSIFY_INTENT=approve GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "RL7 only an explicit /approve retries a release" no "add-label factory:approved-for-production"
+L="$ROOT/.github/workflows/land.yml"
+grep -q 'GH_TOKEN="$BOT_TOKEN" gh pr update-branch' "$L" && [ "$(grep -c 'gh pr update-branch' "$L")" = 1 ] \
+  && { pass=$((pass+1)); echo "ok   RL8 the branch update runs as the machine account only"; } || { fail=$((fail+1)); echo "FAIL RL8 branch update identity"; }
+grep -q 'status=action_required' "$L" && grep -q 'did not start within 3 minutes' "$L" \
+  && { pass=$((pass+1)); echo "ok   RL9 held or missing checks block at once"; } || { fail=$((fail+1)); echo "FAIL RL9 silent waiting"; }
+grep -q '"release-blocked $PR $head"' "$L" \
+  && { pass=$((pass+1)); echo "ok   RL10 a blocked release records the PR head for /approve"; } || { fail=$((fail+1)); echo "FAIL RL10 release-blocked mark"; }
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

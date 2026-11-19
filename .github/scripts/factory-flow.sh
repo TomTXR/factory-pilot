@@ -245,6 +245,9 @@ case "$cmd" in
         emit "cleanup_pr=$pr"
         echo "issue #$issue is cancelled: closed PR #$pr"; exit 0 ;;
       done) echo "issue #$issue is done: no state change"; exit 0 ;;
+      # The release brings the branch up to date (a merge of main, as a human's
+      # "Update branch"): that push is part of the release, not new work.
+      approved-for-production|deploying) echo "issue #$issue is being released: no state change"; exit 0 ;;
     esac
     gh pr edit "$pr" --repo "$R" --add-label factory:agent-review >/dev/null
     set_state "$issue" factory:agent-review; board "$issue" "Agent Review"
@@ -255,6 +258,7 @@ case "$cmd" in
   review)
     pr="$1"; rid="$2"; issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || { echo "not a factory PR"; exit 0; }
     case "$(current_state "$issue")" in cancelled|done) echo "issue #$issue is closed: ignored"; exit 0 ;; esac
+    case "$(current_state "$issue")" in approved-for-production|deploying) echo "issue #$issue is being released: review ignored"; exit 0 ;; esac
     review=$(gh api "repos/$R/pulls/$pr/reviews/$rid")
     author=$(echo "$review" | jq -r .user.login); body=$(echo "$review" | jq -r .body); url=$(echo "$review" | jq -r .html_url)
     if ! is_agent "$author" || ! printf '%s' "$body" | grep -qF "$REVIEW_MARKER"; then
@@ -359,7 +363,10 @@ case "$cmd" in
 
   ready-check)
     pr="$1"; issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || { echo "not a factory PR"; exit 0; }
-    case "$(current_state "$issue")" in cancelled|done) echo "issue #$issue is closed: ignored"; exit 0 ;; esac
+    case "$(current_state "$issue")" in
+      cancelled|done) echo "issue #$issue is closed: ignored"; exit 0 ;;
+      approved-for-production|deploying) echo "issue #$issue is being released: no new test request"; exit 0 ;;
+    esac
     prj=$(gh api "repos/$R/pulls/$pr")
     [ "$(echo "$prj" | jq -r .state)" = "open" ] || { echo "PR closed"; exit 0; }
     head=$(echo "$prj" | jq -r .head.sha)
@@ -525,6 +532,18 @@ case "$cmd" in
       human-review:changes)
         ack "$issue" "$cid" "${read_as}Changes requested $by. Agent: Reworking the pull request."
         "$0" rework "$issue" "$(printf 'Changes requested by %s (%s):\n\n> %s' "$author" "$curl_url" "$(printf '%s' "$body" | sed 's/^/> /' | tail -c 3000)")" ;;
+      blocked:approve)
+        # A release that was blocked (checks held or never started, main kept moving)
+        # is retried by a new explicit /approve: same decision as at Human Review.
+        prs=$(open_factory_prs "$issue"); pr=$(echo "$prs" | head -1)
+        head=""; [ -n "$pr" ] && head=$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)
+        if [ "$explicit" = yes ] && [ -n "$pr" ] && has_mark "$issue" "release-blocked $pr $head"; then
+          set_state "$issue" factory:approved-for-production; board "$issue" Deploying
+          ack "$issue" "$cid" "Release retried $by. Agent: Deploying (update, merge, production deploy, smoke check)."
+          emit land=true
+        elif [ "$explicit" = yes ]; then
+          ask "$issue" "$cid" "\`/approve\` retries a blocked release only, and this story is blocked for another reason (or its PR changed since). Reply \`/retry\` to send it back to the agents."
+        fi ;;
       blocked:retry)
         prs=$(open_factory_prs "$issue")
         if [ -n "$prs" ]; then
