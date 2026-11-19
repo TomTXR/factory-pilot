@@ -1,7 +1,7 @@
 # Factory Spike Lessons
 
 > Sources: Spike 0 log and decisions, 2026-11-17 to 2026-11-19; product owner decisions on stories #25, #28, #32
-> Raw: [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
+> Raw: [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -18,6 +18,7 @@ Running real stories through the factory showed where the first design broke. Ea
 | Closed stories stayed in Plan Review (#25) | Close as not planned or duplicate, or `/cancel`, cancels the story and its PRs and previews |
 | Board columns named states, not who acts; humans could not see where they were needed | Columns start with `Human:` or `Agent:` (for example "Human: Review plan", "Agent: Building"); filter on the Human columns |
 | An email for almost every factory step; some action messages reached nobody but the author | Quiet mode: progress in an edited status section, reactions instead of replies, new comments only for actions and always with the approvers' mentions; the plan carries its own review request. Reason: GitHub notifies participants about new comments, not about edits or reactions |
+| The agent's mentions were a hardcoded copy of the approver list; every approver got every story | Story owners: assignee, else the factory's owner key, else the author, else all approvers. One approver list; no assignment emails without a hand-over |
 
 ## Story shape
 
