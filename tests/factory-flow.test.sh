@@ -556,5 +556,21 @@ FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
 check "D9 split part 2 is blocked by part 1" yes "issues/101/dependencies/blocked_by -F issue_id=100000"
 check "D9 split part 1 inherits the parent's open blockers" yes "issues/100/dependencies/blocked_by -F issue_id=9000"
 
+
+# D10. A closed blocker that is not a factory story (bug, human task) also releases waiting stories.
+setup factory/issue-5 agentbot x
+jq -n '[{number:32, state:"open"}]' > "$FX/blocking-90.json"
+jq -n '{node_id:"I_32", labels:[{name:"factory:story"},{name:"factory:waiting"}]}' > "$FX/issue-32.json"
+jq -n '[{number:90, state:"closed", state_reason:"completed"}]' > "$FX/blocked_by-32.json"
+"$SCRIPT" unblock 90 >/dev/null 2>&1
+check "D10 non-story blocker releases the waiting story" yes "issue edit 32 .*--add-label factory:plan-approved"
+# The workflow must call unblock for every closed issue: stories via closed, all others directly.
+WF="$ROOT/.github/workflows/factory-flow.yml"
+if grep -q "!contains(github.event.issue.labels.\*.name, 'factory:story')" "$WF" && grep -q 'factory-flow.sh unblock' "$WF"; then
+  pass=$((pass+1)); echo "ok   D10 workflow runs unblock for closed non-story issues"
+else
+  fail=$((fail+1)); echo "FAIL D10 workflow has no unblock job for closed non-story issues"
+fi
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
