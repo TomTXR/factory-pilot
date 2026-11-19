@@ -18,7 +18,7 @@ The board columns say who acts next: columns starting with **Human:** wait for a
 | Inbox | Nobody (stories by non-approvers wait) | `/start` or `/approve` |
 | Breakdown | Breakdown agent (Opus) writes the plan | None |
 | Plan Review | Approvers | Answers or changes give a refined plan; `/approve` starts the build |
-| In Progress, Agent Review, Rework | Builder (Sonnet) and reviewer (Opus); at most 3 rework loops. A failed CI run sends the PR back to the builder with the failing tests (the reviewer does not review red PRs) | None |
+| In Progress, Agent Review, Rework | Builder (Sonnet) and reviewer (Opus); at most 3 rework loops. A failed CI run sends the PR back to the builder with the failing tests (the reviewer does not review red PRs). After each push to main, a factory PR that conflicts goes back to the builder to merge main (GitHub runs no checks on a conflicting PR) | None |
 | Human Review | Approvers test the preview | Changes revise the PR; only an explicit `/approve` releases, and only when all human tasks are closed |
 | Deploying, Done | Factory merges and deploys | None |
 | Blocked | Human | `/retry` |

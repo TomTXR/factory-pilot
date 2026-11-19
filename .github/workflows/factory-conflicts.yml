@@ -1,0 +1,46 @@
+name: Factory conflicts
+
+# GitHub runs no pull_request workflows on a PR with a merge conflict, so a
+# conflicting factory PR gets no CI, no review and no factory step and waits
+# forever (#34, PR #39). After each push to main (all factory PRs) or to a
+# factory branch (its PR), a conflicting PR goes back to the builder to merge main.
+on:
+  push:
+    branches: [main, 'factory/issue-*']
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: factory-conflicts-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  conflicts:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FACTORY_AGENT_LOGINS: ${{ vars.FACTORY_AGENT_LOGINS }}
+      FACTORY_APPROVERS: ${{ vars.FACTORY_APPROVERS }}
+      PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+      PROJECT_LOGIN: TomTXR
+      PROJECT_NUMBER: "1"
+      BRANCH: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - run: |
+          # Give GitHub time to compute mergeability against the new head.
+          sleep 15
+          if [ "$BRANCH" = main ]; then
+            .github/scripts/factory-flow.sh conflicts
+          else
+            pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" | jq -r --arg b "$BRANCH" '.[] | select(.head.ref == $b) | .number' | head -1)
+            [ -n "$pr" ] && .github/scripts/factory-flow.sh conflicts "$pr" || echo "no open PR for $BRANCH"
+          fi

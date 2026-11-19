@@ -19,6 +19,7 @@
 # script sets that status; it never restarts the builder while a PR is open.
 #   factory-flow.sh ready-check <pr>         preview deployed: ready for human?
 #   factory-flow.sh ci-failed <pr> <run> <sha>  CI failed on a factory PR: send it back to the builder
+#   factory-flow.sh conflicts [pr...]        after a push: send conflicting factory PRs back to the builder
 #   factory-flow.sh plan-ready <issue>       breakdown posted a plan: notify approvers
 #   factory-flow.sh start <issue>            new story: start the breakdown
 #   factory-flow.sh command <issue> <id>     a comment by a human on a story issue (or a human task)
@@ -76,6 +77,15 @@ set_state() { # issue new-label: remove every other factory state label
     gh issue edit "$issue" --repo "$R" --remove-label "$old" >/dev/null 2>&1 || true
   done
   gh issue edit "$issue" --repo "$R" --add-label "$new" >/dev/null
+}
+pr_mergeable() { # pr -> true | false | unknown; GitHub computes it on request, so poll briefly
+  local m i
+  for i in 1 2 3 4 5 6; do
+    m=$(gh api "repos/$R/pulls/$1" | jq -r '.mergeable')
+    [ "$m" = true ] || [ "$m" = false ] && { echo "$m"; return; }
+    sleep "${MERGEABLE_WAIT:-3}"
+  done
+  echo unknown
 }
 issue_of_pr() { # factory/issue-<n>[-k] -> n
   gh api "repos/$R/pulls/$1" | jq -r .head.ref | sed -nE 's#^factory/issue-([0-9]+)(-[0-9]+)?$#\1#p'
@@ -319,10 +329,32 @@ case "$cmd" in
       | sed -E 's/^[^\t]*\t[^\t]*\t[0-9TZ:.-]+ ?//' \
       | grep -E '✘|Error|error TS|FAIL|failed|expect|Expected|Received|^ *> *[0-9]+ \|' | grep -v '##\[' | awk '!seen[$0]++' | head -40 || true)
     conflict=""
-    [ "$(echo "$prj" | jq -r '.mergeable')" = false ] && conflict=$'\n\nThe PR also conflicts with the current `main`: merge `main` into this branch and resolve the conflicts so that the features on `main` and this story both work.'
+    if [ "$(pr_mergeable "$pr")" = false ]; then
+      conflict=$'\n\nThe PR also conflicts with the current `main`: merge `main` into this branch and resolve the conflicts so that the features on `main` and this story both work.'
+      marker="$marker"$'\n'"<!-- factory:conflict $sha -->"
+    fi
     reason=$(printf '%s\nCI failed on head %s (run https://github.com/%s/actions/runs/%s, failed jobs: %s). Fix the cause so that all checks pass; do not weaken or skip the failing tests unless they test the wrong thing.%s\n\n```\n%s\n```' \
       "$marker" "${sha:0:7}" "$R" "$run" "${jobs:-unknown}" "$conflict" "${errors:-(no error lines found; open the run)}")
     "$0" rework "$issue" "$reason"
+    ;;
+
+  conflicts)
+    # GitHub runs no pull_request workflows on a PR with a merge conflict: no CI, no
+    # review, no factory step. So after every push to main or to a factory branch,
+    # a conflicting factory PR is sent back to the builder to merge main (once per head).
+    # Usage: conflicts [pr...]  (no argument: all open factory PRs)
+    prs="$*"
+    [ -n "$prs" ] || prs=$(gh api "repos/$R/pulls?state=open&per_page=100" | jq -r '.[] | select(.head.ref | test("^factory/issue-[0-9]+$")) | .number')
+    for pr in $prs; do
+      issue=$(issue_of_pr "$pr"); [ -n "$issue" ] || continue
+      st=$(current_state "$issue")
+      case "$st" in in-progress|agent-review|rework|plan-approved|human-review) ;; *) echo "PR #$pr: story #$issue in $st, skipped"; continue ;; esac
+      m=$(pr_mergeable "$pr")
+      [ "$m" = false ] || { echo "PR #$pr: mergeable=$m"; continue; }
+      sha=$(gh api "repos/$R/pulls/$pr" | jq -r .head.sha)
+      if bot_comments "$pr" | jq -e --arg m "<!-- factory:conflict $sha -->" 'any(.[]; contains($m))' >/dev/null; then echo "PR #$pr: conflict of ${sha:0:7} already sent back"; continue; fi
+      "$0" rework "$issue" "$(printf '<!-- factory:conflict %s -->\nPR #%s conflicts with the current `main` (another change was merged first). GitHub runs no checks on a conflicting PR, so nothing can continue until it is resolved. Merge the current `main` into this branch, resolve the conflicts so that both the features on `main` and this story work, run all checks, and push.' "$sha" "$pr")"
+    done
     ;;
 
   ready-check)

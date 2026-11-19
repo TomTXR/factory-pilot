@@ -49,7 +49,7 @@ exit 0
 STUB
 chmod +x "$WORK/bin/gh"
 export PATH="$WORK/bin:$PATH" FX="$WORK/fx" GH_LOG="$WORK/gh.log"
-export GITHUB_REPOSITORY=owner/repo FACTORY_AGENT_LOGINS=agentbot PROJECT_TOKEN= PROJECT_LOGIN=x PROJECT_NUMBER=1 STATUS_SETTLE=0
+export GITHUB_REPOSITORY=owner/repo FACTORY_AGENT_LOGINS=agentbot PROJECT_TOKEN= PROJECT_LOGIN=x PROJECT_NUMBER=1 STATUS_SETTLE=0 MERGEABLE_WAIT=0
 
 M='<!-- openhands-review-run: abc -->'
 pass=0; fail=0
@@ -825,6 +825,34 @@ jq -n '{state:"open", head:{ref:"feature/x", sha:"sha1"}}' > "$FX/pull.json"
 check "CF7 a non-factory PR is ignored" no "pr comment"
 grep -q "workflows: \[CI\]" "$ROOT/.github/workflows/factory-ci-failed.yml" && grep -q "conclusion == 'failure'" "$ROOT/.github/workflows/factory-ci-failed.yml" \
   && { pass=$((pass+1)); echo "ok   CF8 workflow listens for failed CI runs"; } || { fail=$((fail+1)); echo "FAIL CF8 workflow trigger"; }
+
+
+# MC. A conflicting factory PR gets no CI at all: after a push it goes back to the builder.
+cifx factory:agent-review false
+"$SCRIPT" conflicts >/dev/null 2>&1
+check "MC1 a conflicting PR is sent back to merge main" yes "pr comment 16 .*|^PR #16 conflicts with the current \`main\`"
+check "MC1 conflicts use the rework path" yes "statuses/sha1 -f state=failure"
+check "MC1 only factory PRs are checked" no "pr comment 17"
+cifx factory:agent-review false
+jq -n '[{user:{login:"github-actions[bot]"}, body:"<!-- factory:conflict sha1 -->\nx"}]' > "$FX/comments.json"
+"$SCRIPT" conflicts 16 >/dev/null 2>&1
+check "MC2 the same head is sent back only once" no "pr comment 16"
+cifx factory:agent-review true
+"$SCRIPT" conflicts 16 >/dev/null 2>&1
+check "MC3 a mergeable PR is left alone" no "pr comment 16"
+cifx factory:agent-review null
+"$SCRIPT" conflicts 16 >/dev/null 2>&1
+check "MC4 unknown mergeability does nothing" no "pr comment 16"
+cifx factory:done false
+"$SCRIPT" conflicts 16 >/dev/null 2>&1
+check "MC5 closed stories are skipped" no "pr comment 16"
+cifx factory:agent-review false
+"$SCRIPT" ci-failed 16 777 sha1 >/dev/null 2>&1
+check "MC6 a CI rework with a conflict marks the head as told" yes "^<!-- factory:conflict sha1 -->$"
+cifx factory:agent-review false
+jq -n '[{number:18, head:{ref:"factory/issue-5-2"}}]' > "$FX/open_pulls.json"
+"$SCRIPT" conflicts >/dev/null 2>&1
+check "MC7 only exact factory/issue-<n> branches are checked (as in land.yml)" no "pr comment"
 
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
