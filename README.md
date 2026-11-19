@@ -19,7 +19,7 @@ Deployment: `.github/workflows/deploy.yml` calls `deploy/server/pilot-deploy.sh`
 
 On the board, columns starting with **Human:** wait for you; **Agent:** columns need nothing from you.
 
-**Notifications:** set this repository's Watch to "Participating and @mentions". The factory then emails you only when you must act (plan ready, test request, blocked, decisions, assigned human tasks). Progress is in the **Factory status** section at the end of each story and on the board; a thumbs-up reaction on your comment means it was handled.
+**Notifications:** set this repository's Watch to "Participating and @mentions". The factory then emails you only when you must act (plan ready, test request, blocked, decisions, assigned human tasks). These go to the story's owner: the assignee if set, else the approver who triggered a factory-created story, else the author. Assign someone else to hand a story over. Progress is in the **Factory status** section at the end of each story and on the board; a thumbs-up reaction on your comment means it was handled.
 
 1. **New story:** GitHub -> Issues -> New issue -> "User story". The breakdown starts automatically.
 2. **Plan ready** (you get a notification): read the plan, then reply in a comment. Answers or change requests lead to a refined plan; `/approve` (or a clear "looks good, go ahead") starts the build.

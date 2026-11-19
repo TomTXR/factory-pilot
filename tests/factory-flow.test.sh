@@ -677,5 +677,37 @@ jq -n '[{number:16, head:{ref:"factory/issue-5"}}]' > "$FX/open_pulls.json"
 "$SCRIPT" review 16 1 >/dev/null 2>&1
 check "R4 a rework marked on issue and PR counts once" yes "Changes requested \(rework 2 of 3\)"
 
+
+# O. Owners: action notifications go to the story's owners, without assignment emails.
+onotify() { # issue-json
+  setup factory/issue-5 agentbot x; echo "$1" > "$FX/issue-5.json"
+  FACTORY_APPROVERS=alice,bob "$SCRIPT" notify 5 "Decide." >/dev/null 2>&1
+}
+onotify '{"user":{"login":"alice"},"assignees":[],"labels":[]}'
+check "O1 the approver author owns the story" yes "body @alice$"
+onotify '{"user":{"login":"alice"},"assignees":[{"login":"bob"}],"labels":[]}'
+check "O2 an approver assignee takes over" yes "body @bob$"
+onotify '{"user":{"login":"mallory"},"assignees":[{"login":"mallory"}],"labels":[]}'
+check "O3 no approver owner: all approvers" yes "body @alice @bob$"
+onotify '{"user":{"login":"github-actions[bot]"},"assignees":[],"body":"<!-- factory:child-of 28 part 2 -->\n<!-- factory:owner bob -->\n_Part_","labels":[]}'
+check "O4 factory-created story: the owner key counts" yes "body @bob$"
+onotify '{"user":{"login":"mallory"},"assignees":[],"body":"<!-- factory:owner bob -->\nplease","labels":[]}'
+check "O5 an owner key in a human's text is ignored" yes "body @alice @bob$"
+
+setup factory/issue-5 agentbot x
+jq -n '{node_id:"I_test", user:{login:"alice"}, assignees:[], labels:[{name:"factory:story"}]}' > "$FX/issue-5.json"
+FACTORY_APPROVERS=alice "$SCRIPT" start 5 >/dev/null 2>&1
+check "O6 an approver's own story is not assigned (no assignment email)" no "/assignees"
+cmd "" alice "/start"; jq -n '{node_id:"I_test", user:{login:"mallory"}, assignees:[], labels:[{name:"factory:story"}]}' > "$FX/issue.json"
+rm -f "$FX/issue-5.json"; : > "$GH_LOG"; FACTORY_APPROVERS=alice GITHUB_OUTPUT="$WORK/out" "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "O7 /start on a stranger's story assigns the approver" yes "issues/5/assignees -f assignees\[\]=alice"
+
+setup factory/issue-5 agentbot x; splitfx "$SPLIT_PLAN"
+jq -n '{node_id:"I_test", id:5000, labels:[{name:"factory:story"},{name:"factory:plan-review"}]}' > "$FX/issue-5.json"
+jq -n '{user:{login:"alice", type:"User"}, body:"/approve", html_url:"https://x/c"}' > "$FX/comment.json"
+FACTORY_APPROVERS=alice "$SCRIPT" command 5 900 >/dev/null 2>&1
+check "O8 split parts carry the owner key" yes "^  \| <!-- factory:owner alice -->$"
+check "O8 split parts are not assigned" no "assignees\[\]=alice"
+
 echo "factory-flow: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -1,7 +1,7 @@
 # Story Workflow
 
 > Sources: Product owner decisions in the factory spike, 2026-11-19
-> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md)
+> Raw: [Factory story workflow and story split](../../raw/process/2026-11-19-factory-story-workflow.md); [Human tasks and app secrets](../../raw/process/2026-11-19-human-tasks.md); [Follow-up stories from comments](../../raw/process/2026-11-19-follow-up-stories.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md)
 > Updated: 2026-11-19
 
 ## Overview
@@ -58,10 +58,23 @@ Humans get an email only when they must act. Why: GitHub emails every participan
 
 - Progress is in the **Factory status** section at the end of each story (edited in place, with a collapsed history). Read it there or on the board; it sends no email.
 - A handled comment gets a reaction: thumbs up = done (see the status), eyes = the factory asked you something in a reply.
-- New bot comments exist only for actions and always mention the approvers: plan ready (part of the agent's plan comment), test request, blocked, decisions about cancelled blockers or parts. Human tasks notify by assignment.
+- New bot comments exist only for actions and mention the story's **owners** (see below): plan ready (part of the agent's plan comment), test request, blocked, decisions about cancelled blockers or parts. Human tasks notify by assignment.
 - Info texts name people without `@`.
 - The status section is display only and safe against concurrent edits (fresh read, skip if changed, verify, retry). Duplicate protection uses keys in the first line of the issues the factory creates, never the shared body.
 - Set the repository watch to "Participating and @mentions" once, so agent PRs, reviews and CI send no email.
+
+### Owners
+
+Action notifications go to the owners of a story, not to all approvers. Any approver may still act on any story.
+
+| Order | Owner |
+|-------|-------|
+| 1 | GitHub assignees who are approvers. Set one in the UI to hand a story over. The factory assigns only when an approver starts a story by a non-approver. |
+| 2 | For a split part or follow-up: the approver who approved the split or asked for the follow-up (key in the issue, written by the factory) |
+| 3 | The author of the story |
+| 4 | All approvers |
+
+Why: one person usually drives a story, and the list of approvers must exist only once (`FACTORY_APPROVERS`). The factory avoids assigning otherwise, because GitHub emails every assignment and most would need no action. State changes never email owners; only action comments do.
 
 ## Dependencies
 
