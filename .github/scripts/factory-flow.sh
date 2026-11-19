@@ -23,6 +23,9 @@
 #   factory-flow.sh command <issue> <id>     a comment by a human on a story issue
 #   factory-flow.sh closed <issue> <reason>  issue closed (completed | not_planned | duplicate)
 #   factory-flow.sh reopened <issue>         issue reopened
+#   factory-flow.sh split <issue> <approver> approved plan proposes a split: create the parts
+#   factory-flow.sh child-closed <issue>     a part of a split story was closed: start the next
+#                                            part, or close the parent when all parts are closed
 #
 # Humans steer only with comments: /approve, /changes <text>, /retry, or plain
 # text whose intent classify-intent.sh infers at the two gates. Production
@@ -37,7 +40,7 @@ MAX_REWORK=3
 BOT="${FACTORY_BOT_LOGIN:-github-actions[bot]}"
 AGENTS="${FACTORY_AGENT_LOGINS:-}"
 REVIEW_MARKER='<!-- openhands-review-run:'
-STATE_LABELS="factory:breakdown factory:plan-review factory:plan-approved factory:in-progress factory:agent-review factory:human-review factory:rework factory:approved-for-production factory:deploying factory:blocked factory:done factory:cancelled"
+STATE_LABELS="factory:breakdown factory:plan-review factory:plan-approved factory:in-progress factory:agent-review factory:human-review factory:rework factory:approved-for-production factory:deploying factory:blocked factory:split factory:done factory:cancelled"
 here="$(cd "$(dirname "$0")" && pwd)"
 
 board() { "$here/board-status.sh" "$(gh api "repos/$R/issues/$1" | jq -r .node_id)" "$2" || echo "::warning::board update failed"; }
@@ -64,15 +67,30 @@ open_factory_prs() { # issue -> PR numbers on factory/issue-<n> (builder's branc
 }
 current_state() { # issue -> one factory state (without factory: prefix), or inbox
   local labels; labels=$(gh api "repos/$R/issues/$1" | jq -r '[.labels[].name] | join(" ")')
-  for st in cancelled done blocked approved-for-production deploying human-review agent-review rework plan-approved in-progress plan-review breakdown; do
+  for st in cancelled done split blocked approved-for-production deploying human-review agent-review rework plan-approved in-progress plan-review breakdown; do
     case " $labels " in *" factory:$st "*) echo "$st"; return;; esac
   done
   echo inbox
 }
-plan_questions() { # issue -> "Open questions" section of the latest agent plan
+plan_body() { # issue -> body of the latest plan comment by an agent
   gh api "repos/$R/issues/$1/comments" --paginate | jq -rs --arg agents ",$AGENTS," \
     '[.[][] | (.user.login | ascii_downcase) as $u | select(($agents | ascii_downcase | contains("," + $u + ",")) and (.body | startswith("<!-- factory:breakdown -->")))] | last | .body // ""' \
-    | sed -n '/^## Open questions/,$p'
+    | tr -d '\r'
+}
+plan_questions() { plan_body "$1" | sed -n '/^## Open questions/,$p'; }
+split_parts() { # issue dir -> writes dir/<k>.title and dir/<k>.body per proposed story; prints the count
+  # Only a "## Proposed split" section with the split marker counts, and only with 2 or more stories.
+  plan_body "$1" | awk -v d="$2" '
+    /^## Proposed split/ { insec = 1; next }
+    insec && /^## / { insec = 0 }
+    !insec { next }
+    /^<!-- factory:split -->/ { marked = 1; next }
+    /^### Story [0-9]+:/ { k++; t = $0; sub(/^### Story [0-9]+:[ \t]*/, "", t); print t > (d "/" k ".title"); next }
+    k { print > (d "/" k ".body") }
+    END { print ((marked && k >= 2) ? k : 0) }'
+}
+open_parts() { # parent issue -> open sub-issue numbers, in order
+  gh api "repos/$R/issues/$1/sub_issues?per_page=100" | jq -r '.[] | select(.state == "open") | .number'
 }
 ack() { # issue comment-id text: one bot reply per human comment
   gh issue comment "$1" --repo "$R" --body "$(printf '<!-- factory:ack %s -->\n%s' "$2" "$3")" >/dev/null
@@ -191,7 +209,12 @@ case "$cmd" in
       # Without approvers the notification would reach nobody; fail before writing the marker.
       echo "::error::FACTORY_APPROVERS is empty; cannot notify approvers" >&2; exit 1
     fi
-    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Plan ready for your review** %s\n\nPlease read the plan above. Reply with a comment:\n\n- answer the open questions and/or describe changes: the agent writes a refined plan, or\n- `/approve` (or write that the plan is fine) to start building.' "$marker" "$mentions")" >/dev/null
+    dir=$(mktemp -d); parts=$(split_parts "$issue" "$dir"); rm -rf "$dir"
+    approve_text='`/approve` (or write that the plan is fine) to start building.'
+    if [ "$parts" -ge 2 ]; then
+      approve_text="\`/approve\` (or write that the plan is fine) to split this story into the $parts proposed stories. The factory creates them as sub-issues; each gets its own plan, and they are built one after another. To keep one story, ask for a plan without the split."
+    fi
+    gh issue comment "$issue" --repo "$R" --body "$(printf '%s\n**Plan ready for your review** %s\n\nPlease read the plan above. Reply with a comment:\n\n- answer the open questions and/or describe changes: the agent writes a refined plan, or\n- %s' "$marker" "$mentions" "$approve_text")" >/dev/null
     echo "issue #$issue: approvers notified (plan comment $plan_id)"
     ;;
 
@@ -243,8 +266,14 @@ case "$cmd" in
         FACTORY_START_APPROVED=1 "$0" start "$issue" >/dev/null
         ack "$issue" "$cid" "Breakdown started by @$author." ;;
       plan-review:approve)
-        set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
-        ack "$issue" "$cid" "${read_as}**Plan approved** by @$author. The builder starts within about 5 minutes." ;;
+        dir=$(mktemp -d); parts=$(split_parts "$issue" "$dir"); rm -rf "$dir"
+        if [ "$parts" -ge 2 ]; then
+          "$0" split "$issue" "$author"
+          ack "$issue" "$cid" "${read_as}**Plan approved with split** by @$author. The story is split into $parts stories (see above)."
+        else
+          set_state "$issue" factory:plan-approved; board "$issue" "In Progress"
+          ack "$issue" "$cid" "${read_as}**Plan approved** by @$author. The builder starts within about 5 minutes."
+        fi ;;
       plan-review:changes)
         set_state "$issue" factory:breakdown; board "$issue" Breakdown
         ack "$issue" "$cid" "${read_as}**Plan changes requested** by @$author. The breakdown agent writes a refined plan that includes your comment, within about 5 minutes." ;;
@@ -297,20 +326,97 @@ case "$cmd" in
     issue="$1"; reason="${2:-completed}"
     state=$(current_state "$issue")
     if [ "$reason" = not_planned ] || [ "$reason" = duplicate ]; then
-      [ "$state" = cancelled ] && { echo "issue #$issue already cancelled"; exit 0; }
-      prs=$(open_factory_prs "$issue")
-      for pr in $prs; do
-        gh pr close "$pr" --repo "$R" --comment "Closed: story #$issue was cancelled." >/dev/null
-        emit "cleanup_pr=$pr"
-      done
-      set_state "$issue" factory:cancelled; board "$issue" Cancelled
-      echo "issue #$issue -> cancelled (closed PRs: ${prs:-none})"
+      if [ "$state" = cancelled ]; then
+        echo "issue #$issue already cancelled"
+      else
+        prs=$(open_factory_prs "$issue")
+        for pr in $prs; do
+          gh pr close "$pr" --repo "$R" --comment "Closed: story #$issue was cancelled." >/dev/null
+          emit "cleanup_pr=$pr"
+        done
+        set_state "$issue" factory:cancelled; board "$issue" Cancelled
+        echo "issue #$issue -> cancelled (closed PRs: ${prs:-none})"
+        if [ "$state" = split ]; then
+          # A cancelled split story cancels its open parts (closing by GITHUB_TOKEN triggers no event).
+          for part in $(open_parts "$issue"); do
+            gh issue close "$part" --repo "$R" --reason "not planned" --comment "Closed: parent story #$issue was cancelled." >/dev/null
+            "$0" closed "$part" not_planned
+          done
+        fi
+      fi
     else
-      [ "$state" = done ] && { echo "issue #$issue already done"; exit 0; }
-      for old in $STATE_LABELS; do gh issue edit "$issue" --repo "$R" --remove-label "$old" >/dev/null 2>&1 || true; done
-      board "$issue" Done
-      echo "issue #$issue closed as completed -> board Done"
+      if [ "$state" = done ]; then
+        echo "issue #$issue already done"
+      else
+        for old in $STATE_LABELS; do gh issue edit "$issue" --repo "$R" --remove-label "$old" >/dev/null 2>&1 || true; done
+        board "$issue" Done
+        echo "issue #$issue closed as completed -> board Done"
+      fi
     fi
+    "$0" child-closed "$issue"
+    ;;
+
+  split)
+    # Runs only after an approver approved a plan with a "Proposed split" section.
+    issue="$1"; author="$2"
+    if bot_comments "$issue" | jq -e 'any(.[]; contains("<!-- factory:split-done -->"))' >/dev/null; then echo "issue #$issue already split"; exit 0; fi
+    dir=$(mktemp -d); n=$(split_parts "$issue" "$dir")
+    [ "$n" -ge 2 ] || { echo "::error::the plan of #$issue proposes no split" >&2; exit 1; }
+    prev=""; first=""; list=""
+    for k in $(seq 1 "$n"); do
+      title=$(head -1 "$dir/$k.title")
+      {
+        printf '<!-- factory:child-of %s -->\n' "$issue"
+        printf '_Part %s of %s of #%s (split approved by @%s). The parent issue holds the full plan and the answers to its open questions._\n' "$k" "$n" "$issue" "$author"
+        if [ -n "$prev" ]; then printf '_Starts when #%s is done._\n' "$prev"; fi
+        printf '\n'; cat "$dir/$k.body" 2>/dev/null || true
+      } > "$dir/$k.issue"
+      created=$(gh api -X POST "repos/$R/issues" -f title="$title" -F body=@"$dir/$k.issue" -f 'labels[]=factory:story')
+      num=$(echo "$created" | jq -r .number); id=$(echo "$created" | jq -r .id)
+      gh api -X POST "repos/$R/issues/$issue/sub_issues" -F sub_issue_id="$id" >/dev/null || echo "::warning::could not link #$num as sub-issue of #$issue"
+      board "$num" Inbox
+      [ -n "$first" ] || first="$num"
+      list="$list"$'\n'"- #$num $title"
+      prev="$num"
+    done
+    rm -rf "$dir"
+    set_state "$issue" factory:split; board "$issue" Split
+    gh issue comment "$issue" --repo "$R" --body "$(printf '<!-- factory:split-done -->\n**Story split** into %s stories (sub-issues of this issue):\n%s\n\n#%s starts now with its own plan. Each next story starts when the previous one is done. This issue closes when all of them are closed.' "$n" "$list" "$first")" >/dev/null
+    FACTORY_START_APPROVED=1 "$0" start "$first"
+    echo "issue #$issue -> split into $n stories, #$first started"
+    ;;
+
+  child-closed)
+    # Parts are created by this automation and carry the parent marker in line 1.
+    part="$1"
+    pj=$(gh api "repos/$R/issues/$part")
+    [ "$(echo "$pj" | jq -r .user.login)" = "$BOT" ] || { echo "#$part is not a factory part"; exit 0; }
+    parent=$(echo "$pj" | jq -r '.body // ""' | head -1 | sed -nE 's/^<!-- factory:child-of ([0-9]+) -->.*/\1/p')
+    [ -n "$parent" ] || { echo "#$part is not a factory part"; exit 0; }
+    [ "$(gh api "repos/$R/issues/$parent" | jq -r .state)" = open ] || { echo "parent #$parent is already closed"; exit 0; }
+    case "$(current_state "$parent")" in cancelled|done) echo "parent #$parent is already $(current_state "$parent")"; exit 0 ;; esac
+    open=$(open_parts "$parent" | paste -sd' ' -)
+    if [ -z "$open" ]; then
+      if gh api "repos/$R/issues/$parent/sub_issues?per_page=100" | jq -e 'any(.[]; .state_reason == "completed")' >/dev/null; then
+        gh issue comment "$parent" --repo "$R" --body "All parts of this story are closed. Closing it as completed." >/dev/null
+        "$0" closed "$parent" completed
+        gh issue close "$parent" --repo "$R" --reason completed >/dev/null
+      else
+        gh issue comment "$parent" --repo "$R" --body "All parts of this story were cancelled. Closing it as not planned." >/dev/null
+        "$0" closed "$parent" not_planned
+        gh issue close "$parent" --repo "$R" --reason "not planned" >/dev/null
+      fi
+      echo "parent #$parent closed (all parts closed)"; exit 0
+    fi
+    if [ "$(echo "$pj" | jq -r .state_reason)" = completed ]; then
+      next="${open%% *}"
+      if [ "$(current_state "$next")" = inbox ]; then
+        FACTORY_START_APPROVED=1 "$0" start "$next" >/dev/null
+        gh issue comment "$parent" --repo "$R" --body "#$part is done. #$next starts now." >/dev/null
+        echo "parent #$parent: #$part done, #$next started"; exit 0
+      fi
+    fi
+    echo "parent #$parent: #$part closed, open parts: $open"
     ;;
 
   reopened)
@@ -321,5 +427,5 @@ case "$cmd" in
     echo "issue #$issue reopened -> inbox"
     ;;
 
-  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command|closed|reopened ..." >&2; exit 2 ;;
+  *) echo "usage: $0 pr-updated|review|rework|ready-check|plan-ready|start|command|closed|reopened|split|child-closed ..." >&2; exit 2 ;;
 esac
