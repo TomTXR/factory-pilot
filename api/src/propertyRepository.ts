@@ -105,7 +105,28 @@ export function createPropertyRepository(sql: Sql): PropertyRepository {
     },
 
     async claimUnowned(userId) {
-      const rows = await sql`update properties set account_user_id = ${userId} where account_user_id is null returning id`;
+      // Rows whose identity the account already has stay unowned: claiming them would break the per-account
+      // unique index and abort the sign-in. No row is deleted.
+      const rows = await sql`
+        update properties p set account_user_id = ${userId}
+        where p.account_user_id is null and not exists (
+          select 1 from properties o where o.account_user_id = ${userId} and
+            (lower(regexp_replace(btrim(o.street), '\s+', ' ', 'g')),
+              lower(regexp_replace(btrim(o.house_number), '\s+', ' ', 'g')),
+              lower(regexp_replace(btrim(o.house_number_addition), '\s+', ' ', 'g')),
+              lower(regexp_replace(btrim(o.postal_code), '\s+', ' ', 'g')),
+              lower(regexp_replace(btrim(o.city), '\s+', ' ', 'g')),
+              o.country,
+              lower(regexp_replace(btrim(o.owner_name), '\s+', ' ', 'g'))) =
+            (lower(regexp_replace(btrim(p.street), '\s+', ' ', 'g')),
+              lower(regexp_replace(btrim(p.house_number), '\s+', ' ', 'g')),
+              lower(regexp_replace(btrim(p.house_number_addition), '\s+', ' ', 'g')),
+              lower(regexp_replace(btrim(p.postal_code), '\s+', ' ', 'g')),
+              lower(regexp_replace(btrim(p.city), '\s+', ' ', 'g')),
+              p.country,
+              lower(regexp_replace(btrim(p.owner_name), '\s+', ' ', 'g')))
+        )
+        returning p.id`;
       return rows.length;
     },
   };

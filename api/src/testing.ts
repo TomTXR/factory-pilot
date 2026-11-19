@@ -48,7 +48,8 @@ export function memoryRepository(): PropertyRepository & { seedUnowned: (input: 
     async claimUnowned(userId) {
       let count = 0;
       for (const row of rows.values()) {
-        if (row.account === null) {
+        // Same rule as the database: a row the account already has an identical one of stays unowned.
+        if (row.account === null && !taken(userId, normaliseKey(row))) {
           row.account = userId;
           count += 1;
         }

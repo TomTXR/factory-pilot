@@ -92,7 +92,43 @@ describe('properties per account', () => {
   });
 });
 
+const oldProperty = {
+  displayName: null,
+  street: 'Oldstraat',
+  houseNumber: '1',
+  houseNumberAddition: '',
+  postalCode: '1000 AA',
+  city: 'Oudstad',
+  country: 'NL' as const,
+  ownerName: 'Old Owner',
+  propertyType: null,
+  yearBuilt: null,
+  livingAreaM2: null,
+  rooms: null,
+  notes: null,
+};
+
 describe('claim of unowned properties', () => {
+  it('skips an unowned row the account already has, and sign-in still works', async () => {
+    const { repo, signIn } = setup();
+    const a = await signIn('a');
+    await a('POST', '', { street: 'Oldstraat', houseNumber: '1', postalCode: '1000 AA', city: 'Oudstad', ownerName: 'old owner' });
+    repo.seedUnowned(oldProperty);
+    repo.seedUnowned({ ...oldProperty, houseNumber: '2' });
+    const again = await signIn('a');
+    expect(((await (await again('GET')).json()) as { houseNumber: string }[]).map((p) => p.houseNumber)).toEqual(['1', '2']);
+  });
+
+  it('does not block sign-in when the claim throws', async () => {
+    const repo = memoryRepository();
+    repo.claimUnowned = async () => {
+      throw new Error('boom');
+    };
+    const app = createApp({ checkDb: async () => true, properties: repo, version: 'test', auth: testAuth() });
+    const res = await app.request('/api/auth/test-login', { method: 'POST' });
+    expect(res.status).toBe(200);
+  });
+
   it('gives unowned properties to the first account that signs in, and not to later ones', async () => {
     const { repo, signIn } = setup();
     repo.seedUnowned({
