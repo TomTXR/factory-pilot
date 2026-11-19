@@ -1,39 +1,56 @@
 import { type AuthDeps, type AuthMode, type GoogleClient, SESSION_TTL_MS, type SessionStore, type User, type UserStore } from './auth.js';
-import { normaliseKey, type Property, type PropertyRepository } from './properties.js';
+import { normaliseKey, type Property, type PropertyInput, type PropertyRepository } from './properties.js';
 
-/** In-memory repository for route tests. Enforces the same uniqueness rule as the database index. */
-export function memoryRepository(): PropertyRepository {
-  const rows = new Map<string, Property>();
+/** In-memory repository for route tests. Enforces the same per-account rules as the database. */
+export function memoryRepository(): PropertyRepository & { seedUnowned: (input: PropertyInput) => void } {
+  const rows = new Map<string, Property & { account: string | null }>();
   let seq = 0;
-  const taken = (key: string, exceptId?: string) =>
-    [...rows.values()].some((p) => p.id !== exceptId && normaliseKey(p) === key);
+  const strip = (row: Property & { account: string | null }): Property => {
+    const { account, ...property } = row;
+    void account;
+    return property;
+  };
+  const taken = (userId: string, key: string, exceptId?: string) =>
+    [...rows.values()].some((p) => p.id !== exceptId && p.account === userId && normaliseKey(p) === key);
+  const own = (userId: string, id: string) => {
+    const row = rows.get(id);
+    return row && row.account === userId ? row : undefined;
+  };
 
   return {
-    async list() {
-      return [...rows.values()];
+    async list(userId) {
+      return [...rows.values()].filter((p) => p.account === userId).map(strip);
     },
-    async get(id) {
-      return rows.get(id) ?? null;
+    async get(userId, id) {
+      const row = own(userId, id);
+      return row ? strip(row) : null;
     },
-    async create(input) {
-      if (taken(normaliseKey(input))) return 'duplicate';
+    async create(userId, input) {
+      if (taken(userId, normaliseKey(input))) return 'duplicate';
       seq += 1;
       const now = new Date(2026, 0, seq).toISOString();
       const id = `00000000-0000-4000-8000-${String(seq).padStart(12, '0')}`;
-      const property = { ...input, id, createdAt: now, updatedAt: now };
-      rows.set(id, property);
-      return property;
+      const row = { ...input, id, createdAt: now, updatedAt: now, account: userId };
+      rows.set(id, row);
+      return strip(row);
     },
-    async update(id, input) {
-      const existing = rows.get(id);
+    async update(userId, id, input) {
+      const existing = own(userId, id);
       if (!existing) return null;
-      if (taken(normaliseKey(input), id)) return 'duplicate';
-      const property = { ...existing, ...input, updatedAt: new Date().toISOString() };
-      rows.set(id, property);
-      return property;
+      if (taken(userId, normaliseKey(input), id)) return 'duplicate';
+      const row = { ...existing, ...input, updatedAt: new Date().toISOString() };
+      rows.set(id, row);
+      return strip(row);
     },
-    async remove(id) {
-      return rows.delete(id);
+    async remove(userId, id) {
+      return own(userId, id) ? rows.delete(id) : false;
+    },
+    /** Test helper: a property without an account, which no account can see. */
+    seedUnowned(input) {
+      seq += 1;
+      const now = new Date(2026, 0, seq).toISOString();
+      const id = `00000000-0000-4000-8000-${String(seq).padStart(12, '0')}`;
+      rows.set(id, { ...input, id, createdAt: now, updatedAt: now, account: null });
     },
   };
 }

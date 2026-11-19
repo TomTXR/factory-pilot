@@ -45,20 +45,20 @@ export function createApp(deps: AppDeps): Hono {
   app.use('/properties', requireUser);
   app.use('/properties/*', requireUser);
 
-  app.get('/properties', async (c) => c.json(await deps.properties.list()));
+  app.get('/properties', async (c) => c.json(await deps.properties.list(c.get('user').id)));
 
   app.post('/properties', async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     const result = validateProperty(body);
     if (!result.ok) return c.json({ errors: result.errors }, 400);
-    const created = await deps.properties.create(result.value);
+    const created = await deps.properties.create(c.get('user').id, result.value);
     if (created === 'duplicate') return c.json(DUPLICATE, 409);
     return c.json(created, 201);
   });
 
   app.get('/properties/:id', async (c) => {
     const id = c.req.param('id');
-    const property = isUuid(id) ? await deps.properties.get(id) : null;
+    const property = isUuid(id) ? await deps.properties.get(c.get('user').id, id) : null;
     return property ? c.json(property) : c.json(NOT_FOUND, 404);
   });
 
@@ -68,14 +68,14 @@ export function createApp(deps: AppDeps): Hono {
     const result = validateProperty(body);
     if (!result.ok) return c.json({ errors: result.errors }, 400);
     if (!isUuid(id)) return c.json(NOT_FOUND, 404);
-    const updated = await deps.properties.update(id, result.value);
+    const updated = await deps.properties.update(c.get('user').id, id, result.value);
     if (updated === 'duplicate') return c.json(DUPLICATE, 409);
     return updated ? c.json(updated) : c.json(NOT_FOUND, 404);
   });
 
   app.delete('/properties/:id', async (c) => {
     const id = c.req.param('id');
-    const removed = isUuid(id) ? await deps.properties.remove(id) : false;
+    const removed = isUuid(id) ? await deps.properties.remove(c.get('user').id, id) : false;
     return removed ? c.body(null, 204) : c.json(NOT_FOUND, 404);
   });
 

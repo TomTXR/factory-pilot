@@ -59,6 +59,8 @@ export const SESSION_REFRESH_MS = 5 * 60 * 1000;
 export const TEST_USERS: Record<string, GoogleIdentity> = {
   a: { sub: 'test-user-a', email: 'test.user@example.com', name: 'Test User' },
   b: { sub: 'test-user-b', email: 'test.user.two@example.com', name: 'Test User Two' },
+  // Only used by the empty-state e2e test: no spec adds properties for this user.
+  c: { sub: 'test-user-c', email: 'test.user.three@example.com', name: 'Test User Three' },
 };
 
 export function newToken(): string {

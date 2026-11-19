@@ -54,24 +54,26 @@ const columns = (sql: Sql) => sql`id, display_name, street, house_number, house_
 
 export function createPropertyRepository(sql: Sql): PropertyRepository {
   return {
-    async list() {
-      const rows = await sql<Row[]>`select ${columns(sql)} from properties order by created_at, id`;
+    async list(userId) {
+      const rows = await sql<Row[]>`
+        select ${columns(sql)} from properties where account_user_id = ${userId} order by created_at, id`;
       return rows.map(toProperty);
     },
 
-    async get(id) {
-      const rows = await sql<Row[]>`select ${columns(sql)} from properties where id = ${id}`;
+    async get(userId, id) {
+      const rows = await sql<Row[]>`
+        select ${columns(sql)} from properties where id = ${id} and account_user_id = ${userId}`;
       return rows[0] ? toProperty(rows[0]) : null;
     },
 
-    async create(p: PropertyInput) {
+    async create(userId, p: PropertyInput) {
       try {
         const rows = await sql<Row[]>`
           insert into properties (display_name, street, house_number, house_number_addition, postal_code, city,
-            country, owner_name, property_type, year_built, living_area_m2, rooms, notes)
+            country, owner_name, property_type, year_built, living_area_m2, rooms, notes, account_user_id)
           values (${p.displayName}, ${p.street}, ${p.houseNumber}, ${p.houseNumberAddition}, ${p.postalCode},
             ${p.city}, ${p.country}, ${p.ownerName}, ${p.propertyType}, ${p.yearBuilt}, ${p.livingAreaM2},
-            ${p.rooms}, ${p.notes})
+            ${p.rooms}, ${p.notes}, ${userId})
           returning ${columns(sql)}`;
         return toProperty(rows[0] as Row);
       } catch (err) {
@@ -80,7 +82,7 @@ export function createPropertyRepository(sql: Sql): PropertyRepository {
       }
     },
 
-    async update(id, p: PropertyInput) {
+    async update(userId, id, p: PropertyInput) {
       try {
         const rows = await sql<Row[]>`
           update properties set display_name = ${p.displayName}, street = ${p.street},
@@ -88,7 +90,7 @@ export function createPropertyRepository(sql: Sql): PropertyRepository {
             postal_code = ${p.postalCode}, city = ${p.city}, country = ${p.country}, owner_name = ${p.ownerName},
             property_type = ${p.propertyType}, year_built = ${p.yearBuilt}, living_area_m2 = ${p.livingAreaM2},
             rooms = ${p.rooms}, notes = ${p.notes}, updated_at = now()
-          where id = ${id}
+          where id = ${id} and account_user_id = ${userId}
           returning ${columns(sql)}`;
         return rows[0] ? toProperty(rows[0]) : null;
       } catch (err) {
@@ -97,8 +99,8 @@ export function createPropertyRepository(sql: Sql): PropertyRepository {
       }
     },
 
-    async remove(id) {
-      const rows = await sql`delete from properties where id = ${id} returning id`;
+    async remove(userId, id) {
+      const rows = await sql`delete from properties where id = ${id} and account_user_id = ${userId} returning id`;
       return rows.length > 0;
     },
   };
