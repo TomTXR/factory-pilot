@@ -94,3 +94,4 @@ Why: one person usually drives a story, and the list of approvers must exist onl
 
 - [Home Maintenance Log](../product/home-maintenance-log.md)
 - [Factory Spike Lessons](../lessons/factory-spike-lessons.md)
+- [Factory Self-Hosting](factory-self-hosting.md)
