@@ -88,7 +88,12 @@ jobs:
                 if [ -z "$BOT_TOKEN" ]; then reason="the PR is behind main and the repository secret FACTORY_BOT_TOKEN (classic token of the machine account) is missing"; break; fi
                 if [ "$updates" -ge 3 ]; then reason="main moved 3 times during the release"; break; fi
                 # merge, not rebase: branches may contain merge commits
-                GH_TOKEN="$BOT_TOKEN" gh pr update-branch "$PR" --repo "$GITHUB_REPOSITORY" || { reason="updating the branch as the machine account failed"; break; }
+                # REST "update a pull request branch" (merge, not rebase). The gh CLI command for this
+                # queries GraphQL fields that need the `repo` scope; the bot's classic token has
+                # only `public_repo`, which is enough for this endpoint on a public repository.
+                if ! out=$(GH_TOKEN="$BOT_TOKEN" gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$PR/update-branch" -f expected_head_sha="$head" 2>&1); then
+                  reason="updating the branch as the machine account failed: $(echo "$out" | head -c 300)"; break
+                fi
                 updates=$((updates + 1)); since=$(date +%s); sleep 15; continue ;;
               DIRTY)
                 # Conflict with main (e.g. another story was merged first). Only the
