@@ -60,6 +60,7 @@ Humans get an email only when they must act. Why: GitHub emails every participan
 - A handled comment gets a reaction: thumbs up = done (see the status), eyes = the factory asked you something in a reply.
 - New bot comments exist only for actions and always mention the approvers: plan ready (part of the agent's plan comment), test request, blocked, decisions about cancelled blockers or parts. Human tasks notify by assignment.
 - Info texts name people without `@`.
+- The status section is display only and safe against concurrent edits (fresh read, skip if changed, verify, retry). Duplicate protection uses keys in the first line of the issues the factory creates, never the shared body.
 - Set the repository watch to "Participating and @mentions" once, so agent PRs, reviews and CI send no email.
 
 ## Dependencies

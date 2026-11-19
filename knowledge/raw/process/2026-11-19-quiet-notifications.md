@@ -22,4 +22,8 @@ Decision (2026-11-19), "quiet mode":
 - The rework reason goes on the pull request (agent PRs do not notify humans), not on the issue, except when no PR is open and the builder must read it from the issue.
 - Each approver sets the repository watch to "Participating and @mentions" once, so agent PRs, reviews and CI do not send email.
 
+Review finding (2026-11-19, PR #40): the issue body is shared by several workflows and by humans, so a plain read-modify-write can lose updates. Therefore:
+- Status writes rebuild from a fresh read, skip the write when the issue changed meanwhile (another step or a human edit), verify their line afterwards and retry up to 5 times. The status section is display only.
+- Duplicate protection never relies on the body: created issues carry a first-line key (split part, human task, follow-up), and a rerun reuses what it finds by that key.
+
 Expected result per story: the plan (with review request), the test request, human-task assignments, and messages for blocked steps or decisions. Story #20 had 9 bot and agent comments, which under quiet mode would have been 3 emails.
