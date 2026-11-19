@@ -463,7 +463,8 @@ case "$cmd" in
       created=$(gh api -X POST "repos/$R/issues" -f title="$title" -F body=@"$dir/$k.issue" -f 'labels[]=factory:story')
       num=$(echo "$created" | jq -r .number); id=$(echo "$created" | jq -r .id)
       gh api -X POST "repos/$R/issues/$issue/sub_issues" -F sub_issue_id="$id" >/dev/null || echo "::warning::could not link #$num as sub-issue of #$issue"
-      board "$num" Inbox
+      # Later parts start on their own when the previous part is done: no human action.
+      if [ -n "$prev" ]; then board "$num" Waiting; else board "$num" Inbox; fi
       if [ -n "$prev" ]; then add_blocker "$num" "$prev"
       else for b in $(open_blockers "$issue"); do add_blocker "$num" "$b"; done; fi
       [ -n "$first" ] || first="$num"
