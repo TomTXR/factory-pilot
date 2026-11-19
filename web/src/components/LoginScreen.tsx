@@ -4,11 +4,14 @@ import type { SignInMode } from '../api';
 export function LoginScreen({
   mode,
   failed,
+  accountDeleted = false,
   onTestSignIn,
 }: {
   mode: SignInMode;
   /** True when Google sign-in did not complete. */
   failed: boolean;
+  /** True right after the user deleted their account. */
+  accountDeleted?: boolean;
   onTestSignIn: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -29,6 +32,11 @@ export function LoginScreen({
     <main className="mx-auto max-w-md px-4 py-12 text-center sm:px-6 sm:py-20">
       <h1 className="text-2xl font-semibold text-slate-900">Home Maintenance Log</h1>
       <p className="mt-3 text-slate-600">Sign in to see your properties.</p>
+      {accountDeleted && (
+        <p role="status" className="mt-6 rounded-lg border border-slate-300 bg-slate-50 p-3 text-slate-800">
+          Your account has been deleted.
+        </p>
+      )}
       {(failed || testError) && (
         <p role="alert" className="mt-6 rounded-lg border border-red-200 bg-red-50 p-3 text-red-800">
           Sign-in did not complete. Please try again.
