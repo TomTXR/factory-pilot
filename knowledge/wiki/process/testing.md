@@ -4,7 +4,7 @@ summary: Tests as the regression suite: one test per acceptance criterion with i
 # Testing
 
 > Sources: Product owner decisions, 2026-11-20; web research on regression testing practice
-> Raw: [Tests per criterion](../../raw/process/2026-11-20-tests-per-criterion.md)
+> Raw: [Tests per criterion](../../raw/process/2026-11-20-tests-per-criterion.md); [Criteria covered by existing tests](../../raw/process/2026-11-20-criteria-covered-by-existing-tests.md)
 > Updated: 2026-11-20
 
 ## Overview
@@ -15,8 +15,8 @@ Every test is part of the regression suite. CI runs all tests on every PR, so a 
 
 | Step | Who | What |
 |------|-----|------|
-| Plan | Breakdown agent | Numbered Given/When/Then acceptance criteria. They are the test specification; the plan has no separate test section |
-| Build | Builder | One test per criterion, ID at the start of the title: `#46 AC4: ...`. One title may name several: `#46 AC6, AC7: ...`. A bug fix gets one test that fails without the fix |
+| Plan | Breakdown agent | Numbered Given/When/Then acceptance criteria for new or changed behaviour. They are the test specification; the plan has no separate test section. No criteria that only say existing behaviour stays unchanged: the full suite guarantees that |
+| Build | Builder | One test per criterion, ID at the start of the title: `#46 AC4: ...`. One title may name several: `#46 AC6, AC7: ...`. A bug fix gets one test that fails without the fix. If an existing test already proves a criterion, its title gets the ID: `#46 AC4, #59 AC13: ...` |
 | CI | `criteria-check.sh` (required check `checks`) | On `factory/issue-<n>`: reads the newest agent plan of #n and fails for every criterion without a test title or a `Not automated: AC<k> <reason>` line in the story record. Every missing criterion gets its own `FAIL` line, so the CI-failure rework sends all of them to the builder at once |
 | Review | Agent reviewer | Test level, test fails without the change, no extra tests (see below) |
 | Human review | Approver | Checks the "Not automated" criteria on the preview |
@@ -28,7 +28,7 @@ Every test is part of the regression suite. CI runs all tests on every PR, so a 
 | Unit and route | Vitest (`api/`, `web/`) | Logic, validation, API routes with injected dependencies. The default |
 | End-to-end | Playwright, desktop and mobile | A flow across web, API and database, or browser behaviour. At most one test per user flow |
 
-The reviewer reports as P1: a test that maps to no criterion and no bug, a criterion tested at two levels, an end-to-end test where a unit test proves the same, a "Not automated" reason that a test could cover. No tests of library behaviour, no snapshot tests. A story that changes old behaviour changes or deletes the old test.
+The reviewer reports as P1: a test that maps to no criterion and no bug, a criterion tested at two levels, an end-to-end test where a unit test proves the same, a "Not automated" reason that a test could cover or that points to existing tests. No tests of library behaviour, no snapshot tests. A story that changes old behaviour changes or deletes the old test.
 
 ## Why
 
@@ -37,6 +37,16 @@ The reviewer reports as P1: a test that maps to no criterion and no bug, a crite
 - **No test section in the plan.** Plans must stay short for the human; the criteria already describe the tests, and test design rules belong in AGENTS.md, which the human does not review.
 - **Lowest level.** Unit tests are fast and stable; end-to-end tests are slow and flaky. The pyramid keeps CI short.
 - **Mutation testing deferred.** It shows tests that check nothing, which coverage does not. It costs CI minutes and a new tool; add it when the suite shows weak tests.
+
+## Three ways to satisfy a criterion
+
+| Case | Handling |
+|------|----------|
+| New behaviour | New test with the ID |
+| An existing test already proves it | Add the ID to that test's title |
+| No test can check it (for example a colour judged by eye) | `Not automated: AC<k> <reason>` in the story record |
+
+Why: the first live run (#59) used "Not automated" for a criterion that older tests covered. One label for two cases hides which criteria have no test at all.
 
 ## Limits
 
