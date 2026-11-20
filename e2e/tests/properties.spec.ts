@@ -151,9 +151,10 @@ test.describe('address search', () => {
     await expect(page.getByLabel(/^Street/)).toHaveValue('Voorbeeldstraat');
     await expect(page.getByLabel(/^Postal code/)).toHaveValue('9999 SS');
     await expect(page.getByLabel(/^City/)).toHaveValue('Testdorp');
-    await expect(page.getByText('From BAG')).toHaveCount(4);
+    // Street, house number, addition, postal code and city are all marked, also an empty addition.
+    await expect(page.getByText('From BAG')).toHaveCount(5);
     await page.getByLabel(/^City/).fill('Anderdorp');
-    await expect(page.getByText('From BAG')).toHaveCount(3);
+    await expect(page.getByText('From BAG')).toHaveCount(4);
     await page.getByLabel(/^Owner name/).fill(owner);
     await page.getByRole('button', { name: 'Add property', exact: true }).last().click();
     await expect(page.getByRole('heading', { name: 'Voorbeeldstraat 12' })).toBeVisible();
@@ -199,7 +200,8 @@ test.describe('address search', () => {
     await expect(page.getByText('From BAG')).toHaveCount(2);
 
     await page.getByLabel('Find address').fill('voorbeeldstraat');
-    const option = page.getByRole('option').first();
+    // Scoped to the list: the country select has options too.
+    const option = page.getByRole('listbox', { name: 'Matching addresses' }).getByRole('option').first();
     await expect(option).toBeVisible();
     expect((await option.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
