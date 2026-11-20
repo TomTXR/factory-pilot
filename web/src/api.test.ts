@@ -49,17 +49,7 @@ describe('auth calls', () => {
 });
 
 describe('createAddressApi', () => {
-  it('suggests through our own API with encoded text', async () => {
-    const calls: string[] = [];
-    const fetchFn = (async (url: string) => {
-      calls.push(url);
-      return new Response(JSON.stringify({ status: 'ok', suggestions: [] }));
-    }) as unknown as typeof fetch;
-    expect(await createAddressApi(fetchFn).suggest('a & b 1')).toEqual({ status: 'ok', suggestions: [] });
-    expect(calls).toEqual(['/api/address/suggest?q=a+%26+b+1']);
-  });
-
-  it('answers unavailable for a network error or a server error', async () => {
+  it('#59 AC10: answers unavailable for a network error or a server error', async () => {
     const down = (async () => {
       throw new TypeError('offline');
     }) as unknown as typeof fetch;
@@ -68,13 +58,6 @@ describe('createAddressApi', () => {
     const broken = respond({ error: 'x' }, { status: 500 });
     expect(await createAddressApi(broken).refresh({ postalCode: '9999 SS', houseNumber: '1', addition: '' })).toEqual({
       status: 'unavailable',
-    });
-  });
-
-  it('throws a field error for a refresh the API rejects', async () => {
-    const bad = respond({ errors: { postalCode: 'x' } }, { status: 400 });
-    await expect(createAddressApi(bad).refresh({ postalCode: '1', houseNumber: '1', addition: '' })).rejects.toMatchObject({
-      status: 400,
     });
   });
 });

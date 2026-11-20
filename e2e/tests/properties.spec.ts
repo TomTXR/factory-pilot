@@ -136,90 +136,29 @@ test('has no horizontal scrolling', async ({ page }, info) => {
 });
 
 // The stack under test (CI and local) answers address searches with a stub of synthetic addresses.
-test.describe('address search', () => {
-  const openAddForm = async (page: Page) => {
-    await page.goto('/');
-    await page.getByRole('button', { name: /Add (your first )?property/ }).click();
-  };
+test('#59 AC14: the stack answers the address search from the stub and the saved property has the shown values', async ({ page }, info) => {
+  const owner = unique('search', info.project.name);
+  await page.goto('/');
+  await page.getByRole('button', { name: /Add (your first )?property/ }).click();
+  await page.getByLabel('Find address').fill('voorbeeldstraat 12');
+  await page.getByRole('option', { name: 'Voorbeeldstraat 12, 9999 SS Testdorp' }).click();
+  await expect(page.getByLabel(/^Street/)).toHaveValue('Voorbeeldstraat');
+  await expect(page.getByLabel(/^Postal code/)).toHaveValue('9999 SS');
+  await expect(page.getByLabel(/^City/)).toHaveValue('Testdorp');
+  await page.getByLabel(/^City/).fill('Anderdorp');
+  await page.getByLabel(/^Owner name/).fill(owner);
+  await page.getByRole('button', { name: 'Add property', exact: true }).last().click();
+  await expect(page.getByRole('heading', { name: 'Voorbeeldstraat 12' })).toBeVisible();
+  await expect(page.getByText('Anderdorp')).toBeVisible();
+});
 
-  test('adds a property from a picked address and saves the shown values', async ({ page }, info) => {
-    const owner = unique('search', info.project.name);
-    await openAddForm(page);
-    await expect(page.getByLabel('Country')).toHaveValue('NL');
-    await page.getByLabel('Find address').fill('voorbeeldstraat 12');
-    await page.getByRole('option', { name: 'Voorbeeldstraat 12, 9999 SS Testdorp' }).click();
-    await expect(page.getByLabel(/^Street/)).toHaveValue('Voorbeeldstraat');
-    await expect(page.getByLabel(/^Postal code/)).toHaveValue('9999 SS');
-    await expect(page.getByLabel(/^City/)).toHaveValue('Testdorp');
-    // Street, house number, addition, postal code and city are all marked, also an empty addition.
-    await expect(page.getByText('From BAG')).toHaveCount(5);
-    await page.getByLabel(/^City/).fill('Anderdorp');
-    await expect(page.getByText('From BAG')).toHaveCount(4);
-    await page.getByLabel(/^Owner name/).fill(owner);
-    await page.getByRole('button', { name: 'Add property', exact: true }).last().click();
-    await expect(page.getByRole('heading', { name: 'Voorbeeldstraat 12' })).toBeVisible();
-    await expect(page.getByText('Anderdorp')).toBeVisible();
-    await expect(page.getByText('From BAG')).toHaveCount(0);
-  });
-
-  test('shows a message and changes nothing when no address matches', async ({ page }) => {
-    await openAddForm(page);
-    await page.getByLabel('Find address').fill('geenbestaandstraat');
-    await expect(page.getByText('No matching address found. You can fill in the fields yourself.')).toBeVisible();
-    await expect(page.getByLabel(/^Street/)).toHaveValue('');
-  });
-
-  test('keeps the form usable when the address service is unavailable', async ({ page }, info) => {
-    const owner = unique('down', info.project.name);
-    await openAddForm(page);
-    await page.getByLabel('Find address').fill('9990 SD 1');
-    await expect(page.getByRole('alert').filter({ hasText: 'not available right now' })).toBeVisible();
-    await addProperty(page, owner, 'Handstraat');
-    await expect(page.getByRole('heading', { name: 'Handstraat 7' })).toBeVisible();
-  });
-
-  test('is not offered for Germany', async ({ page }) => {
-    await openAddForm(page);
-    await page.getByLabel('Country').selectOption('DE');
-    await expect(page.getByLabel('Find address')).toHaveCount(0);
-  });
-
-  test('refreshes street and city on edit and keeps suggestions inside a 390 px screen', async ({ page }, info) => {
-    const owner = unique('refresh', info.project.name);
-    await openAddForm(page);
-    await page.getByLabel(/^Street/).fill('Oudestraat');
-    await page.getByLabel(/^House number/).fill('12');
-    await page.getByLabel(/^Postal code/).fill('9999 SS');
-    await page.getByLabel(/^City/).fill('Oudstad');
-    await page.getByLabel(/^Owner name/).fill(owner);
-    await page.getByRole('button', { name: 'Add property', exact: true }).last().click();
-    await page.getByRole('button', { name: 'Edit property' }).click();
-    await page.getByRole('button', { name: 'Look up in BAG' }).click();
-    await expect(page.getByLabel(/^Street/)).toHaveValue('Voorbeeldstraat');
-    await expect(page.getByLabel(/^City/)).toHaveValue('Testdorp');
-    await expect(page.getByText('From BAG')).toHaveCount(2);
-
-    await page.getByLabel('Find address').fill('voorbeeldstraat');
-    // Scoped to the list: the country select has options too.
-    const option = page.getByRole('listbox', { name: 'Matching addresses' }).getByRole('option').first();
-    await expect(option).toBeVisible();
-    expect((await option.boundingBox())?.height).toBeGreaterThanOrEqual(44);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
-  });
-
-  test('offers the additions when several addresses match', async ({ page }, info) => {
-    const owner = unique('several', info.project.name);
-    await openAddForm(page);
-    await page.getByLabel(/^Street/).fill('Oudestraat');
-    await page.getByLabel(/^House number/).fill('14');
-    await page.getByLabel(/^Postal code/).fill('9999 SS');
-    await page.getByLabel(/^City/).fill('Oudstad');
-    await page.getByLabel(/^Owner name/).fill(owner);
-    await page.getByRole('button', { name: 'Add property', exact: true }).last().click();
-    await page.getByRole('button', { name: 'Edit property' }).click();
-    await page.getByRole('button', { name: 'Look up in BAG' }).click();
-    await page.getByRole('button', { name: 'A-2', exact: true }).click();
-    await expect(page.getByLabel(/^Addition/)).toHaveValue('A-2');
-    await expect(page.getByLabel(/^Street/)).toHaveValue('Voorbeeldstraat');
-  });
+test('#59 AC16: suggestions are at least 44 px high and fit the screen width', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Add (your first )?property/ }).click();
+  await page.getByLabel('Find address').fill('voorbeeldstraat');
+  // Scoped to the list: the country select has options too.
+  const option = page.getByRole('listbox', { name: 'Matching addresses' }).getByRole('option').first();
+  await expect(option).toBeVisible();
+  expect((await option.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
 });

@@ -29,7 +29,7 @@ const reply = (docs: unknown[], status = 200) =>
   new Response(JSON.stringify({ response: { docs } }), { status, headers: { 'content-type': 'application/json' } });
 
 describe('input normalisation', () => {
-  it('accepts postal codes in any case with or without a space', () => {
+  it('#59 AC13: accepts postal codes in any case with or without a space', () => {
     expect(normalisePostalCode('1234ab')).toBe('1234 AB');
     expect(normalisePostalCode(' 1234 Ab ')).toBe('1234 AB');
     expect(normalisePostalCode('0123 AB')).toBeNull();
@@ -37,7 +37,7 @@ describe('input normalisation', () => {
     expect(normalisePostalCode('1234 A')).toBeNull();
   });
 
-  it('accepts house numbers from 1 to 99999', () => {
+  it('#59 AC13: accepts house numbers from 1 to 99999', () => {
     expect(normaliseHouseNumber('12')).toBe('12');
     expect(normaliseHouseNumber('007')).toBe('7');
     expect(normaliseHouseNumber('0')).toBeNull();
@@ -48,20 +48,20 @@ describe('input normalisation', () => {
 });
 
 describe('addition mapping', () => {
-  it('formats letter, addition and both', () => {
+  it('#59 AC4: formats letter, addition and both', () => {
     expect(formatAddition('A', undefined)).toBe('A');
     expect(formatAddition(undefined, '2')).toBe('2');
     expect(formatAddition('A', '2')).toBe('A-2');
     expect(formatAddition('', '')).toBe('');
   });
 
-  it('compares ignoring case, spaces and dashes', () => {
+  it('#59 AC12: compares ignoring case, spaces and dashes', () => {
     expect(additionKey('A-2')).toBe(additionKey('a 2'));
     expect(additionKey('A-2')).toBe(additionKey('A2'));
     expect(additionKey('A')).not.toBe(additionKey('A-2'));
   });
 
-  it('maps a PDOK document and rejects incomplete ones', () => {
+  it('#59 AC4: maps a PDOK document and rejects incomplete ones', () => {
     expect(toAddress(doc())).toEqual({
       street: 'Voorbeeldstraat',
       houseNumber: '14',
@@ -77,17 +77,17 @@ describe('addition mapping', () => {
 
 describe('chooseAddress', () => {
   const a = (addition: string) => ({ ...(toAddress(doc({ huisletter: '', huisnummertoevoeging: '' })) as object), houseNumberAddition: addition }) as never;
-  it('finds the only address without an addition', () => {
+  it('#59 AC11: finds the only address without an addition', () => {
     expect(chooseAddress([a('')], '').status).toBe('found');
   });
-  it('finds the address that matches the addition', () => {
+  it('#59 AC11: finds the address that matches the addition', () => {
     expect(chooseAddress([a('A'), a('1')], 'a').status).toBe('found');
   });
-  it('lists additions when several match or none does', () => {
+  it('#59 AC12: lists additions when several match or none does', () => {
     expect(chooseAddress([a('A'), a('1'), a('A-2')], '')).toEqual({ status: 'several', additions: ['1', 'A', 'A-2'] });
     expect(chooseAddress([a('A'), a('1')], 'Z')).toEqual({ status: 'several', additions: ['1', 'A'] });
   });
-  it('reports not found without candidates or additions to offer', () => {
+  it('#59 AC12: reports not found without candidates or additions to offer', () => {
     expect(chooseAddress([], '')).toEqual({ status: 'not_found' });
     expect(chooseAddress([a('')], 'B')).toEqual({ status: 'not_found' });
   });
@@ -96,7 +96,7 @@ describe('chooseAddress', () => {
 describe('PDOK client', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('suggests with a fixed host, encoded text and the address filter', async () => {
+  it('#59 AC3: suggests with a fixed host, encoded text and the address filter', async () => {
     const fetchFn = vi.fn(async () => reply([{ id: ID, weergavenaam: 'Voorbeeldstraat 14A, 9999 SS Testdorp', type: 'adres' }, { id: '', weergavenaam: 'x' }]));
     const result = await createPdokClient(fetchFn as unknown as typeof fetch).suggest('voorbeeld & 14');
     expect(result).toEqual({ status: 'ok', suggestions: [{ id: ID, label: 'Voorbeeldstraat 14A, 9999 SS Testdorp' }] });
@@ -107,14 +107,14 @@ describe('PDOK client', () => {
     expect(url.searchParams.get('rows')).toBe('8');
   });
 
-  it('looks up an id', async () => {
+  it('#59 AC4: looks up an id', async () => {
     const client = createPdokClient((async () => reply([doc()])) as unknown as typeof fetch);
     expect(await client.lookupById(ID)).toMatchObject({ status: 'found', address: { postalCode: '9999 SS', houseNumberAddition: 'A-2' } });
     const empty = createPdokClient((async () => reply([])) as unknown as typeof fetch);
     expect(await empty.lookupById(ID)).toEqual({ status: 'not_found' });
   });
 
-  it('looks up by postal code, filtering on the house number', async () => {
+  it('#59 AC11: looks up by postal code, filtering on the house number', async () => {
     const fetchFn = vi.fn(async () => reply([doc({ huisletter: 'A', huisnummertoevoeging: '' }), doc({ huisletter: '', huisnummertoevoeging: '1' }), doc({ huisnummer: 16 })]));
     const client = createPdokClient(fetchFn as unknown as typeof fetch);
     const result = await client.lookupByPostalCode({ postalCode: '9999 ss', houseNumber: '14', addition: '' });
@@ -128,7 +128,7 @@ describe('PDOK client', () => {
     });
   });
 
-  it('answers unavailable for an HTTP error, a bad body, a network error and a timeout', async () => {
+  it('#59 AC10: answers unavailable for an HTTP error, a bad body, a network error and a timeout', async () => {
     const make = (fn: () => Promise<Response>) => createPdokClient(fn as unknown as typeof fetch);
     const failures = [
       make(async () => reply([], 503)),
@@ -147,7 +147,7 @@ describe('PDOK client', () => {
     }
   });
 
-  it('passes a 5 second timeout signal', async () => {
+  it('#59 AC10: passes a 5 second timeout signal', async () => {
     const fetchFn = vi.fn(async (_url: unknown, init?: RequestInit) => {
       expect(init?.signal).toBeInstanceOf(AbortSignal);
       return reply([]);
@@ -159,10 +159,10 @@ describe('PDOK client', () => {
 
 describe('stub client', () => {
   const stub = createStubAddressClient();
-  it('uses only synthetic postal codes', () => {
+  it('#59 AC14: uses only synthetic postal codes', () => {
     for (const a of STUB_ADDRESSES) expect(a.postalCode).toMatch(/^99\d\d S[ADS]$/);
   });
-  it('suggests, looks up and refreshes', async () => {
+  it('#59 AC14: suggests, looks up and refreshes', async () => {
     const s = await stub.suggest('9999 SS 14');
     expect(s.status === 'ok' && s.suggestions.length).toBe(3);
     if (s.status !== 'ok') throw new Error('unexpected');
@@ -171,7 +171,7 @@ describe('stub client', () => {
     expect(await stub.lookupByPostalCode({ postalCode: '9999SS', houseNumber: '14', addition: '' })).toMatchObject({ status: 'several' });
     expect(await stub.lookupByPostalCode({ postalCode: '1011 AB', houseNumber: '7', addition: '' })).toEqual({ status: 'not_found' });
   });
-  it('answers unavailable for the failure postal code', async () => {
+  it('#59 AC14: answers unavailable for the failure postal code', async () => {
     expect(await stub.suggest('9990 SD')).toEqual({ status: 'unavailable' });
     expect(await stub.lookupByPostalCode({ postalCode: '9990 SD', houseNumber: '1', addition: '' })).toEqual({ status: 'unavailable' });
   });
@@ -196,14 +196,14 @@ function spyClient(): AddressClient & { calls: number } {
 }
 
 describe('address routes', () => {
-  it('answers 401 without a session', async () => {
+  it('#59 AC13: answers 401 without a session', async () => {
     const { app } = build();
     for (const path of ['suggest?q=abc', `lookup?id=${ID}`, 'lookup?postalCode=9999SS&houseNumber=1']) {
       expect((await app.request(`/api/address/${path}`)).status).toBe(401);
     }
   });
 
-  it('answers 400 without calling the client for invalid input', async () => {
+  it('#59 AC13: answers 400 without calling the client for invalid input', async () => {
     const client = spyClient();
     const { get } = build(client);
     for (const path of [
@@ -225,7 +225,7 @@ describe('address routes', () => {
     expect(client.calls).toBe(0);
   });
 
-  it('answers each outcome', async () => {
+  it('#59 AC14: answers each outcome', async () => {
     const { get } = build();
     const found = await (await get('suggest?q=voorbeeldstraat 12')).json();
     expect(found).toMatchObject({ status: 'ok', suggestions: [{ label: 'Voorbeeldstraat 12, 9999 SS Testdorp' }] });
@@ -241,7 +241,7 @@ describe('address routes', () => {
     expect(await down.json()).toEqual({ status: 'unavailable' });
   });
 
-  it('answers unavailable when the client throws', async () => {
+  it('#59 AC10: answers unavailable when the client throws', async () => {
     const boom = async () => {
       throw new Error('secret detail');
     };
@@ -253,7 +253,7 @@ describe('address routes', () => {
     }
   });
 
-  it('logs only the outcome and duration', async () => {
+  it('#59 AC14: logs only the outcome and duration', async () => {
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const { get } = build();
     await get('suggest?q=voorbeeldstraat 12');

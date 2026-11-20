@@ -31,6 +31,10 @@ The approved plan (second plan on #59) has 17 criteria: country first (1, 2); ad
 
 Added: Address search ([article](../../wiki/product/address-search.md)). Changed: Property (country first, search fills the address), API, system overview, screens, UI patterns.
 
+## Not automated
+
+- Not automated: AC15 the existing add, edit and delete flows are covered by the existing e2e tests in `e2e/tests/properties.spec.ts` and the App tests, which are unchanged (only the field order moved) and still run in CI; a second test would repeat them.
+
 ## Review notes
 
 Docker was not available in the build environment, so the Playwright tests in `e2e/tests/properties.spec.ts` were written but not run there; lint, typecheck and the api and web unit tests were run.

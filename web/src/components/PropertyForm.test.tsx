@@ -53,7 +53,7 @@ async function searchAndPick(user: ReturnType<typeof userEvent.setup>, text = 'v
 }
 
 describe('PropertyForm address search', () => {
-  it('asks for the country before the address fields', () => {
+  it('#59 AC1: asks for the country before the address fields', () => {
     setup(fakeApi());
     const labels = screen.getAllByText(/^(Display name|Country|Find address|Street|House number|Postal code|City|Owner name)/, {
       selector: 'label',
@@ -71,7 +71,7 @@ describe('PropertyForm address search', () => {
     expect(screen.getByLabelText('Country')).toHaveValue('NL');
   });
 
-  it('hides the search and the lookup button for Germany without sending requests and keeps the fields', async () => {
+  it('#59 AC2: hides the search and the lookup button for Germany without sending requests and keeps the fields', async () => {
     const api = fakeApi();
     const { user } = setup(api, { refresh: true, initial: { street: 'Alte Strasse' } });
     expect(screen.getByRole('button', { name: 'Look up in BAG' })).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe('PropertyForm address search', () => {
     expect(api.refresh).not.toHaveBeenCalled();
   });
 
-  it('does not search for fewer than 3 characters', async () => {
+  it('#59 AC3: does not search for fewer than 3 characters', async () => {
     const api = fakeApi();
     const { user } = setup(api);
     await user.type(search(), 'vo');
@@ -91,7 +91,7 @@ describe('PropertyForm address search', () => {
     expect(api.suggest).not.toHaveBeenCalled();
   });
 
-  it('fills and marks all address fields when a suggestion is picked, and the mouse and keys both work', async () => {
+  it('#59 AC4: fills and marks all address fields when a suggestion is picked, and the mouse and keys both work', async () => {
     const api = fakeApi();
     const { user } = setup(api);
     await searchAndPick(user);
@@ -105,7 +105,7 @@ describe('PropertyForm address search', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
 
-  it('picks with the arrow keys and Enter without submitting the form, and Escape closes the list', async () => {
+  it('#59 AC4: picks with the arrow keys and Enter without submitting the form, and Escape closes the list', async () => {
     const api = fakeApi();
     const { user, onSubmit } = setup(api);
     await user.type(search(), 'voorbeeld');
@@ -118,7 +118,7 @@ describe('PropertyForm address search', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('removes the marker of a field changed by hand', async () => {
+  it('#59 AC8: removes the marker of a field changed by hand', async () => {
     const { user } = setup(fakeApi());
     await searchAndPick(user);
     await waitFor(() => expect(screen.getAllByText('From BAG')).toHaveLength(5));
@@ -126,7 +126,24 @@ describe('PropertyForm address search', () => {
     expect(screen.getAllByText('From BAG')).toHaveLength(4);
   });
 
-  it('saves exactly the values shown, including corrections', async () => {
+  it('#59 AC7: saves a property filled in by hand without using the search', async () => {
+    const api = fakeApi();
+    const { user, onSubmit } = setup(api);
+    await user.type(screen.getByLabelText(/^Street/), 'Eigenstraat');
+    await user.type(screen.getByLabelText(/^House number/), '3');
+    await user.type(screen.getByLabelText(/^Postal code/), '1011 AB');
+    await user.type(screen.getByLabelText(/^City/), 'Eigenstad');
+    await user.type(screen.getByLabelText(/^Owner name/), 'Anna Test');
+    await user.click(screen.getByRole('button', { name: 'Add property' }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ street: 'Eigenstraat', houseNumber: '3', postalCode: '1011 AB', city: 'Eigenstad' }),
+    );
+    expect(api.suggest).not.toHaveBeenCalled();
+    expect(api.lookupById).not.toHaveBeenCalled();
+    expect(screen.queryByText('From BAG')).not.toBeInTheDocument();
+  });
+
+  it('#59 AC9: saves exactly the values shown, including corrections', async () => {
     const { user, onSubmit } = setup(fakeApi());
     await searchAndPick(user);
     await waitFor(() => expect(value(/^City/)).toBe('Testdorp'));
@@ -139,7 +156,7 @@ describe('PropertyForm address search', () => {
     );
   });
 
-  it('shows the answer for the latest text only', async () => {
+  it('#59 AC5: shows the answer for the latest text only', async () => {
     let resolveFirst: (v: Awaited<ReturnType<AddressApi['suggest']>>) => void = () => {};
     const suggest = vi
       .fn<AddressApi['suggest']>()
@@ -156,7 +173,7 @@ describe('PropertyForm address search', () => {
     expect(screen.getByRole('option', { name: /Nieuwe 1/ })).toBeInTheDocument();
   });
 
-  it('does not overwrite a field changed while the picked address loads', async () => {
+  it('#59 AC5: does not overwrite a field changed while the picked address loads', async () => {
     let resolve: (v: { status: 'found'; address: Address }) => void = () => {};
     const api = fakeApi({ lookupById: () => new Promise((r) => (resolve = r)) });
     const { user } = setup(api);
@@ -169,21 +186,21 @@ describe('PropertyForm address search', () => {
     expect(screen.getAllByText('From BAG')).toHaveLength(4);
   });
 
-  it('tells when nothing matches and changes no field', async () => {
+  it('#59 AC6: tells when nothing matches and changes no field', async () => {
     const { user } = setup(fakeApi({ suggest: async () => ({ status: 'ok', suggestions: [] }) }), { initial: { street: 'Eigen' } });
     await user.type(search(), 'zzzz');
     expect(await screen.findByText('No matching address found. You can fill in the fields yourself.')).toBeInTheDocument();
     expect(value(/^Street/)).toBe('Eigen');
   });
 
-  it('shows a failure for the search and for a picked address and changes no field', async () => {
+  it('#59 AC10: shows a failure for the search and for a picked address and changes no field', async () => {
     const { user } = setup(fakeApi({ suggest: async () => ({ status: 'unavailable' }) }), { initial: { city: 'Eigen' } });
     await user.type(search(), 'voorbeeld');
     expect(await screen.findByRole('alert')).toHaveTextContent('The address search is not available right now');
     expect(value(/^City/)).toBe('Eigen');
   });
 
-  it('shows a failure when loading the picked address fails', async () => {
+  it('#59 AC10: shows a failure when loading the picked address fails', async () => {
     const { user } = setup(fakeApi({ lookupById: async () => ({ status: 'unavailable' }) }), { initial: { city: 'Eigen' } });
     await searchAndPick(user);
     expect(await screen.findByRole('alert')).toHaveTextContent('The address search is not available right now');
@@ -191,7 +208,7 @@ describe('PropertyForm address search', () => {
     expect(screen.queryByText('From BAG')).not.toBeInTheDocument();
   });
 
-  it('gives the search field, house number and postal code the right keyboards', () => {
+  it('#59 AC17: gives the search field, house number and postal code the right keyboards', () => {
     setup(fakeApi());
     expect(screen.getByLabelText(/^House number/)).toHaveAttribute('inputmode', 'numeric');
     expect(screen.getByLabelText(/^Postal code/)).not.toHaveAttribute('inputmode');
@@ -202,14 +219,14 @@ describe('PropertyForm address search', () => {
 describe('PropertyForm refresh', () => {
   const existing = { street: 'Oud', houseNumber: '12', postalCode: '9999 SS', city: 'Oudstad', ownerName: 'Anna' };
 
-  it('has no button on the add form and does not look up by itself on the edit form', () => {
+  it('#59 AC11: has no button on the add form and does not look up by itself on the edit form', () => {
     const api = fakeApi();
     setup(api, { initial: existing });
     expect(screen.queryByRole('button', { name: 'Look up in BAG' })).not.toBeInTheDocument();
     expect(api.refresh).not.toHaveBeenCalled();
   });
 
-  it('replaces and marks street and city only', async () => {
+  it('#59 AC11: replaces and marks street and city only', async () => {
     const api = fakeApi();
     const { user } = setup(api, { refresh: true, initial: existing });
     await user.click(screen.getByRole('button', { name: 'Look up in BAG' }));
@@ -220,21 +237,21 @@ describe('PropertyForm refresh', () => {
     expect(screen.getAllByText('From BAG')).toHaveLength(2);
   });
 
-  it('says so when the address is not found and changes no field', async () => {
+  it('#59 AC12: says so when the address is not found and changes no field', async () => {
     const { user } = setup(fakeApi({ refresh: async () => ({ status: 'not_found' }) }), { refresh: true, initial: existing });
     await user.click(screen.getByRole('button', { name: 'Look up in BAG' }));
     expect(await screen.findByText('Address not found in the BAG. Please fill in the fields yourself.')).toBeInTheDocument();
     expect(value(/^Street/)).toBe('Oud');
   });
 
-  it('shows a failure message when the service is unavailable', async () => {
+  it('#59 AC10: shows a failure message when the service is unavailable', async () => {
     const { user } = setup(fakeApi({ refresh: async () => ({ status: 'unavailable' }) }), { refresh: true, initial: existing });
     await user.click(screen.getByRole('button', { name: 'Look up in BAG' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('not available right now');
     expect(value(/^Street/)).toBe('Oud');
   });
 
-  it('asks for a valid postal code and house number when the API answers 400', async () => {
+  it('#59 AC11: asks for a valid postal code and house number when the API answers 400', async () => {
     const refresh = vi.fn(async () => {
       throw new ApiError('Please correct the highlighted fields.', 400, { postalCode: 'x' });
     });
@@ -243,7 +260,7 @@ describe('PropertyForm refresh', () => {
     expect(await screen.findByText('Fill in a valid postal code and house number to look up the address.')).toBeInTheDocument();
   });
 
-  it('offers the additions, fills the chosen one and looks up again', async () => {
+  it('#59 AC12: offers the additions, fills the chosen one and looks up again', async () => {
     const refresh = vi
       .fn<AddressApi['refresh']>()
       .mockResolvedValueOnce({ status: 'several', additions: ['A', '1'] })
@@ -256,7 +273,7 @@ describe('PropertyForm refresh', () => {
     expect(value(/^Addition/)).toBe('A');
   });
 
-  it('discards the result when the house number changed meanwhile', async () => {
+  it('#59 AC11: discards the result when the house number changed meanwhile', async () => {
     let resolve: (v: RefreshOutcome) => void = () => {};
     const { user } = setup(fakeApi({ refresh: () => new Promise((r) => (resolve = r)) }), { refresh: true, initial: existing });
     await user.click(screen.getByRole('button', { name: 'Look up in BAG' }));
@@ -267,7 +284,7 @@ describe('PropertyForm refresh', () => {
     expect(screen.queryByText('From BAG')).not.toBeInTheDocument();
   });
 
-  it('keeps a street typed while the lookup runs', async () => {
+  it('#59 AC11: keeps a street typed while the lookup runs', async () => {
     let resolve: (v: RefreshOutcome) => void = () => {};
     const { user } = setup(fakeApi({ refresh: () => new Promise((r) => (resolve = r)) }), { refresh: true, initial: existing });
     await user.click(screen.getByRole('button', { name: 'Look up in BAG' }));
