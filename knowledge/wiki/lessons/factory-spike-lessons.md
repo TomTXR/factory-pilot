@@ -1,10 +1,10 @@
 ---
-summary: Tweaks from running real stories through the factory: comment control, split, human tasks, secrets, follow-ups, dependencies, plan review, silent stalls, project knowledge, GitHub specifics
+summary: Tweaks from running real stories through the factory: comment control, split, human tasks, secrets, follow-ups, dependencies, plan review, silent stalls, project knowledge, tests, GitHub specifics
 ---
 # Factory Spike Lessons
 
 > Sources: Spike 0 log and decisions, 2026-11-17 to 2026-11-19; product owner decisions on stories #25, #28, #32
-> Raw: [Parallel work rules](../../raw/process/2026-11-20-parallel-work-rules.md); [Wiki layout for parallel PRs](../../raw/process/2026-11-20-wiki-parallel-layout.md); [Wiki log removed](../../raw/process/2026-11-20-wiki-log-removed.md); [Project knowledge duty](../../raw/process/2026-11-19-project-knowledge-duty.md); [Story as test bench](../../raw/lessons/2026-11-19-story-as-test-bench.md); [Blocked as a gate](../../raw/process/2026-11-19-blocked-as-gate.md); [Release branch update](../../raw/process/2026-11-19-release-branch-update.md); [Silent stalls and the watchdog](../../raw/process/2026-11-19-silent-stalls-watchdog.md); [Plan criterion for non-existing data](../../raw/lessons/2026-11-19-plan-criteria-for-nonexistent-data.md); [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
+> Raw: [Tests per criterion](../../raw/process/2026-11-20-tests-per-criterion.md); [Parallel work rules](../../raw/process/2026-11-20-parallel-work-rules.md); [Wiki layout for parallel PRs](../../raw/process/2026-11-20-wiki-parallel-layout.md); [Wiki log removed](../../raw/process/2026-11-20-wiki-log-removed.md); [Project knowledge duty](../../raw/process/2026-11-19-project-knowledge-duty.md); [Story as test bench](../../raw/lessons/2026-11-19-story-as-test-bench.md); [Blocked as a gate](../../raw/process/2026-11-19-blocked-as-gate.md); [Release branch update](../../raw/process/2026-11-19-release-branch-update.md); [Silent stalls and the watchdog](../../raw/process/2026-11-19-silent-stalls-watchdog.md); [Plan criterion for non-existing data](../../raw/lessons/2026-11-19-plan-criteria-for-nonexistent-data.md); [Factory spike lessons](../../raw/lessons/2026-11-19-factory-spike-lessons.md); [Quiet notifications](../../raw/process/2026-11-19-quiet-notifications.md); [Story owners](../../raw/process/2026-11-19-story-owners.md); [Board column names](../../raw/lessons/2026-11-19-board-column-names.md); [Story dependencies](../../raw/process/2026-11-19-story-dependencies.md)
 > Updated: 2026-11-20
 
 ## Overview
@@ -58,6 +58,12 @@ Running real stories through the factory showed where the first design broke. Ea
 | Agents documented product answers but not the code structure or technical decisions; #35 had no story record because "capture when done" ran after the merge, with no owner and no check | The story's own PR updates the wiki (concept articles, decision records, concept map) and adds the story record. A required CI check fails without it; the agent reviewer checks the content. Every agent reads the whole index first and picks the relevant articles itself ([Project Knowledge](../process/project-knowledge.md)). Rule: a duty without an owner and a merge blocker does not happen |
 | Once every PR wrote the wiki, every two open PRs conflicted on the append-only `log.md` (#62 twice in one night); each conflict costs a factory story a rework round | Log removed: git history and story records carry it. Fixing file by file was the wrong level: the cause is shared write points. Adopted the human team patterns for every file (AGENTS.md "Parallel work"): no running numbers (decisions named, migrations by UTC time), no hand-edited shared lists (index generated from front matter), regenerate generated files on conflict, test the merged result. A conflict should mean two changes to the same knowledge, not two writes to the same place |
 
+## Tests
+
+| Problem seen | Change |
+|--------------|--------|
+| Rule 4 asked for tests, but nothing linked a test to a criterion, limited the number of tests or blocked a merge without them; agents tend to overdo test suites | One test per numbered criterion, ID in the title, lowest level; a CI check traces every criterion of the plan to a test or a "Not automated" line; the reviewer reports tests without a criterion. No extra plan section: the criteria are the test specification ([Testing](../process/testing.md)) |
+
 ## Agents and quality
 
 - Plans decide quality: breakdown and review run on Opus, code on Sonnet, all at effort medium.
@@ -83,3 +89,4 @@ Running real stories through the factory showed where the first design broke. Ea
 - [Story Workflow](../process/story-workflow.md)
 - [Factory Self-Hosting](../process/factory-self-hosting.md)
 - [Project Knowledge](../process/project-knowledge.md)
+- [Testing](../process/testing.md)
