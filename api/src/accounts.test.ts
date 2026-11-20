@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
+import { createStubAddressClient } from './addressStub.js';
 import { memoryRepository, testAuth } from './testing.js';
 
 const valid = {
@@ -12,7 +13,7 @@ const valid = {
 
 function setup() {
   const repo = memoryRepository();
-  const app = createApp({ checkDb: async () => true, properties: repo, version: 'test', auth: testAuth() });
+  const app = createApp({ checkDb: async () => true, properties: repo, version: 'test', auth: testAuth(), address: createStubAddressClient() });
   const signIn = async (user: string) => {
     const res = await app.request('/api/auth/test-login', { method: 'POST', body: JSON.stringify({ user }) });
     const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';

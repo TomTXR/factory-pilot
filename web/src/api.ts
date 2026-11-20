@@ -122,7 +122,8 @@ async function request(fetchFn: typeof fetch, path: string, init?: RequestInit):
   let res: Response;
   try {
     res = await fetchFn(path, init);
-  } catch {
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err;
     throw new ApiError('The server could not be reached.', null);
   }
   if (res.ok) return res;
@@ -168,4 +169,51 @@ export async function deleteAccount(fetchFn: typeof fetch = (...a) => fetch(...a
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ confirm: 'DELETE' }),
   });
+}
+
+/** An address from the address service. The postal code is written as "1234 AB". */
+export interface Address {
+  street: string;
+  houseNumber: string;
+  houseNumberAddition: string;
+  postalCode: string;
+  city: string;
+}
+
+export interface AddressSuggestion {
+  id: string;
+  label: string;
+}
+
+/** `unavailable` also covers a failed call to our own API: the form only needs to know it cannot help now. */
+export type SuggestOutcome = { status: 'ok'; suggestions: AddressSuggestion[] } | { status: 'unavailable' };
+export type AddressOutcome = { status: 'found'; address: Address } | { status: 'not_found' } | { status: 'unavailable' };
+export type RefreshOutcome =
+  | AddressOutcome
+  | { status: 'several'; additions: string[] };
+
+export interface AddressApi {
+  suggest: (text: string, signal?: AbortSignal) => Promise<SuggestOutcome>;
+  lookupById: (id: string) => Promise<AddressOutcome>;
+  /** Throws an ApiError with status 400 when the postal code or house number is not valid. */
+  refresh: (p: { postalCode: string; houseNumber: string; addition: string }) => Promise<RefreshOutcome>;
+}
+
+export function createAddressApi(fetchFn: typeof fetch = (...args) => fetch(...args)): AddressApi {
+  async function call<T extends { status: string }>(path: string, params: Record<string, string>, signal?: AbortSignal) {
+    const res = await request(fetchFn, `/api/address/${path}?${new URLSearchParams(params)}`, { signal });
+    return (await res.json()) as T;
+  }
+  const unavailable = (err: unknown): { status: 'unavailable' } => {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    return { status: 'unavailable' };
+  };
+  return {
+    suggest: (text, signal) => call<SuggestOutcome>('suggest', { q: text }, signal).catch(unavailable),
+    lookupById: (id) => call<AddressOutcome>('lookup', { id }).catch(unavailable),
+    refresh: (p) => call<RefreshOutcome>('lookup', p).catch((err) => {
+      if (err instanceof ApiError && err.status === 400) throw err;
+      return unavailable(err);
+    }),
+  };
 }

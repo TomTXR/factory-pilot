@@ -1,4 +1,11 @@
 import { Hono } from 'hono';
+import {
+  type AddressClient,
+  isAddressId,
+  isValidAddition,
+  normaliseHouseNumber,
+  normalisePostalCode,
+} from './addressClient.js';
 import type { AuthDeps } from './auth.js';
 import { createAuth } from './authRoutes.js';
 import { logger } from './logger.js';
@@ -10,11 +17,14 @@ export interface AppDeps {
   properties: PropertyRepository;
   version: string;
   auth: AuthDeps;
+  address: AddressClient;
   /** Clock, replaceable in tests. */
   now?: () => Date;
 }
 
 const DUPLICATE = { error: 'This property already exists' };
+const MIN_SEARCH = 3;
+const MAX_SEARCH = 100;
 const NOT_FOUND = { error: 'Property not found' };
 
 /** Builds the HTTP app. Dependencies are injected so routes can be tested without a database. */
@@ -44,6 +54,46 @@ export function createApp(deps: AppDeps): Hono {
   // Everything below is protected; /health, /version and /auth stay public.
   app.use('/properties', requireUser);
   app.use('/properties/*', requireUser);
+  app.use('/address/*', requireUser);
+
+  /** Logs the outcome and duration of an address call. Never the input or the address. */
+  const logOutcome = (kind: 'suggest' | 'lookup', outcome: string, started: number) =>
+    logger.info('address call', { kind, outcome, durationMs: Date.now() - started });
+
+  app.get('/address/suggest', async (c) => {
+    const q = (c.req.query('q') ?? '').trim();
+    if (q.length < MIN_SEARCH || q.length > MAX_SEARCH) {
+      return c.json({ errors: { q: `Search text must be ${MIN_SEARCH} to ${MAX_SEARCH} characters` } }, 400);
+    }
+    const started = Date.now();
+    const result = await deps.address.suggest(q).catch((): { status: 'unavailable' } => ({ status: 'unavailable' }));
+    logOutcome('suggest', result.status === 'ok' ? (result.suggestions.length > 0 ? 'found' : 'none') : 'unavailable', started);
+    return c.json(result);
+  });
+
+  app.get('/address/lookup', async (c) => {
+    const id = c.req.query('id');
+    const started = Date.now();
+    let result: { status: string };
+    if (id !== undefined) {
+      if (!isAddressId(id)) return c.json({ errors: { id: 'Address id is not valid' } }, 400);
+      result = await deps.address.lookupById(id).catch((): { status: 'unavailable' } => ({ status: 'unavailable' }));
+    } else {
+      const errors: Record<string, string> = {};
+      const postalCode = normalisePostalCode(c.req.query('postalCode') ?? '');
+      const houseNumber = normaliseHouseNumber(c.req.query('houseNumber') ?? '');
+      const addition = (c.req.query('addition') ?? '').trim().replace(/\s+/g, ' ');
+      if (!postalCode) errors.postalCode = 'Postal code must be 4 digits and 2 letters';
+      if (!houseNumber) errors.houseNumber = 'House number must be a number from 1 to 99999';
+      if (!isValidAddition(addition)) errors.addition = 'Addition is too long';
+      if (!postalCode || !houseNumber || errors.addition) return c.json({ errors }, 400);
+      result = await deps
+        .address.lookupByPostalCode({ postalCode, houseNumber, addition })
+        .catch((): { status: 'unavailable' } => ({ status: 'unavailable' }));
+    }
+    logOutcome('lookup', result.status === 'not_found' ? 'none' : result.status, started);
+    return c.json(result);
+  });
 
   app.get('/properties', async (c) => c.json(await deps.properties.list(c.get('user').id)));
 

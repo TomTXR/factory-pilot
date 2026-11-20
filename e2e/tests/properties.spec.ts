@@ -134,3 +134,31 @@ test('has no horizontal scrolling', async ({ page }, info) => {
   await expect(page.getByRole('heading', { name: 'Breedtestraat 7' })).toBeVisible();
   expect(await overflow()).toBe(false);
 });
+
+// The stack under test (CI and local) answers address searches with a stub of synthetic addresses.
+test('#59 AC14: the stack answers the address search from the stub and the saved property has the shown values', async ({ page }, info) => {
+  const owner = unique('search', info.project.name);
+  await page.goto('/');
+  await page.getByRole('button', { name: /Add (your first )?property/ }).click();
+  await page.getByLabel('Find address').fill('voorbeeldstraat 12');
+  await page.getByRole('option', { name: 'Voorbeeldstraat 12, 9999 SS Testdorp' }).click();
+  await expect(page.getByLabel(/^Street/)).toHaveValue('Voorbeeldstraat');
+  await expect(page.getByLabel(/^Postal code/)).toHaveValue('9999 SS');
+  await expect(page.getByLabel(/^City/)).toHaveValue('Testdorp');
+  await page.getByLabel(/^City/).fill('Anderdorp');
+  await page.getByLabel(/^Owner name/).fill(owner);
+  await page.getByRole('button', { name: 'Add property', exact: true }).last().click();
+  await expect(page.getByRole('heading', { name: 'Voorbeeldstraat 12' })).toBeVisible();
+  await expect(page.getByText('Anderdorp')).toBeVisible();
+});
+
+test('#59 AC16: suggestions are at least 44 px high and fit the screen width', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Add (your first )?property/ }).click();
+  await page.getByLabel('Find address').fill('voorbeeldstraat');
+  // Scoped to the list: the country select has options too.
+  const option = page.getByRole('listbox', { name: 'Matching addresses' }).getByRole('option').first();
+  await expect(option).toBeVisible();
+  expect((await option.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+});

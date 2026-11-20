@@ -3,9 +3,9 @@ summary: Routes with method, public or protected, status codes, error bodies, de
 ---
 # API
 
-> Sources: `api/src/app.ts`, `api/src/authRoutes.ts`, checked 2026-11-19; Story #63
-> Raw: [Story 63](../../raw/stories/2026-11-19-story-63-document-current-app.md)
-> Updated: 2026-11-19
+> Sources: `api/src/app.ts`, `api/src/authRoutes.ts`, checked 2026-11-19; Story #63; Story #59
+> Raw: [Story 63](../../raw/stories/2026-11-19-story-63-document-current-app.md); [Story 59](../../raw/stories/2026-11-20-story-59-address-search.md)
+> Updated: 2026-11-20
 
 ## Purpose
 
@@ -20,8 +20,9 @@ The HTTP routes under `/api`, which are public and which need a session, and the
 5. `GET /properties` 200 list of the account's properties, ordered by creation. `POST /properties` 201 created, 400 `{errors}` per field, 409 duplicate. `GET /properties/:id` 200 or 404. `PUT /properties/:id` 200, 400, 404 or 409. `DELETE /properties/:id` 204 or 404. An id that is not a UUID answers 404; for `PUT` validation runs first, so an invalid body on a bad id answers 400.
 6. Another account's property id answers 404 with `{"error":"Property not found"}`, the same as an unknown id ([A property belongs to exactly one account, other accounts get 404](../decisions/property-belongs-to-one-account-others-get-404.md)).
 7. A 409 body is `{"error":"This property already exists"}`; a 400 body is `{"errors":{"<field>":"<message>"}}`.
-8. `createApp(deps)` takes `checkDb`, `properties` (repository), `version`, `auth` (mode, Google client, user and session stores) and an optional clock. Tests pass fakes, so no database is needed ([The API is a Hono app with injected dependencies](../decisions/hono-app-with-injected-dependencies.md)).
-9. Logging uses `logger` (`api/src/logger.ts`, JSON lines, `LOG_LEVEL`). Events logged include migrations applied, start-up, failed or rejected Google sign-ins, and deleted accounts (user id and number of properties only).
+8. `createApp(deps)` takes `checkDb`, `properties` (repository), `version`, `auth` (mode, Google client, user and session stores), `address` (address client: PDOK or the stub) and an optional clock. Tests pass fakes, so no database is needed ([The API is a Hono app with injected dependencies](../decisions/hono-app-with-injected-dependencies.md)).
+9. Address routes ([address search](../product/address-search.md)), protected like `/properties` (401 without a session): `GET /address/suggest?q=` (3 to 100 characters) answers 200 `{status:"ok", suggestions:[{id,label}]}` (up to 8) or `{status:"unavailable"}`. `GET /address/lookup?id=` (PDOK id format) answers `{status:"found", address}`, `not_found` or `unavailable`. `GET /address/lookup?postalCode=&houseNumber=&addition=` (postal code 4 digits and 2 letters, house number 1 to 99999, addition at most 200 characters) answers `found`, `several` (with `additions`), `not_found` or `unavailable`. Invalid input answers 400 `{errors}` and calls no external service. An external failure answers 200 `unavailable`, never a 500. Each call logs only `kind`, `outcome` (found, none, several, unavailable) and `durationMs`.
+10. Logging uses `logger` (`api/src/logger.ts`, JSON lines, `LOG_LEVEL`). Events logged include migrations applied, start-up, failed or rejected Google sign-ins, and deleted accounts (user id and number of properties only).
 
 ## Relations
 
@@ -32,6 +33,7 @@ The HTTP routes under `/api`, which are public and which need a session, and the
 - `api/src/app.ts`: composition and property routes.
 - `api/src/authRoutes.ts`: auth routes and `requireUser`.
 - `api/src/properties.ts`: validation.
+- `api/src/addressClient.ts`, `pdokClient.ts`, `addressStub.ts`: address client, PDOK and stub.
 - `api/src/server.ts`: wiring and start-up.
 
 ## Decisions
@@ -41,10 +43,11 @@ The HTTP routes under `/api`, which are public and which need a session, and the
 
 ## Stories
 
-- #20: property routes. #34: auth routes and protection. #35: per-account scoping. #46: `DELETE /auth/account`.
+- #20: property routes. #34: auth routes and protection. #35: per-account scoping. #46: `DELETE /auth/account`. #59: address routes.
 
 ## See Also
 
+- [Address search](../product/address-search.md)
 - [Authentication](authentication.md)
 - [Data model](data-model.md)
 - [Property](../product/property.md)

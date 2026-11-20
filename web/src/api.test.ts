@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPropertiesApi, fetchMe, fetchSignInMode, fetchVersion } from './api';
+import { createAddressApi, createPropertiesApi, fetchMe, fetchSignInMode, fetchVersion } from './api';
 
 const respond = (body: unknown, init?: ResponseInit) =>
   (async () => new Response(JSON.stringify(body), init)) as unknown as typeof fetch;
@@ -45,5 +45,19 @@ describe('auth calls', () => {
   it('createPropertiesApi turns a 401 into an unauthorized ApiError', async () => {
     const api = createPropertiesApi(respond({ error: 'Not signed in' }, { status: 401 }));
     await expect(api.list()).rejects.toMatchObject({ status: 401, unauthorized: true });
+  });
+});
+
+describe('createAddressApi', () => {
+  it('#59 AC10: answers unavailable for a network error or a server error', async () => {
+    const down = (async () => {
+      throw new TypeError('offline');
+    }) as unknown as typeof fetch;
+    expect(await createAddressApi(down).suggest('abc')).toEqual({ status: 'unavailable' });
+    expect(await createAddressApi(down).lookupById('adr-1')).toEqual({ status: 'unavailable' });
+    const broken = respond({ error: 'x' }, { status: 500 });
+    expect(await createAddressApi(broken).refresh({ postalCode: '9999 SS', houseNumber: '1', addition: '' })).toEqual({
+      status: 'unavailable',
+    });
   });
 });
