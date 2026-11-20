@@ -141,7 +141,8 @@ How work moves through the software factory.
 |---------|---------|
 | [Factory Self-Hosting](process/factory-self-hosting.md) | Idea, not decided: the factory develops itself; why it fits, safeguards (lockout, rights, testing, watchdog), a software factory hub as the central entry point, publishing the learnings as a guide, suggested order |
 | [Project Knowledge](process/project-knowledge.md) | How the wiki is structured, read and updated: index generated from article front matter, concept map, topics, who writes what in every PR, CI checks, reviewer duty, rules for parallel PRs (no running numbers, generated lists, regenerate on conflict), why |
-| [Story Workflow](process/story-workflow.md) | Stages, wiki update in every PR, human commands at the two gates, cancel, story split into sub-issues, human tasks, task comments and app secrets, follow-up stories, dependencies, quiet notifications, story owners, release, stalls and the watchdog |
+| [Story Workflow](process/story-workflow.md) | Stages, wiki update and tests per criterion in every PR, human commands at the two gates, cancel, story split into sub-issues, human tasks, task comments and app secrets, follow-up stories, dependencies, quiet notifications, story owners, release, stalls and the watchdog |
+| [Testing](process/testing.md) | Tests as the regression suite: one test per acceptance criterion with its ID in the title, lowest test level, no extra tests, "Not automated" escape, CI criteria check, reviewer scope rules, why |
 
 ## lessons
 
@@ -149,4 +150,4 @@ What the project learned and why its rules exist.
 
 | Article | Summary |
 |---------|---------|
-| [Factory Spike Lessons](lessons/factory-spike-lessons.md) | Tweaks from running real stories through the factory: comment control, split, human tasks, secrets, follow-ups, dependencies, plan review, silent stalls, project knowledge, GitHub specifics |
+| [Factory Spike Lessons](lessons/factory-spike-lessons.md) | Tweaks from running real stories through the factory: comment control, split, human tasks, secrets, follow-ups, dependencies, plan review, silent stalls, project knowledge, tests, GitHub specifics |
