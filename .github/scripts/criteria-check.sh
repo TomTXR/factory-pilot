@@ -4,10 +4,12 @@
 # On a story branch (factory/issue-<n>) it reads the newest plan of the story (the
 # breakdown comment by an agent login), takes the numbered acceptance criteria and looks
 # for each ID "#<n> AC<k>" in the title of a test. One title may name several criteria:
-# "#<n> AC3, AC4: ...". A criterion that cannot be automated is listed in the PR
-# description as "Not automated: AC<k> <reason>"; the agent reviewer judges the reason.
-# Other branches pass. The output lines start with FAIL so that the CI-failure rework quotes them.
-# Env: GH_TOKEN, GITHUB_REPOSITORY, FACTORY_AGENT_LOGINS, PR_BODY; CRITERIA_ROOT (tests only).
+# "#<n> AC3, AC4: ...". A criterion that cannot be automated is listed in the story
+# record (knowledge/raw/stories/*-story-<n>-*.md) as "Not automated: AC<k> <reason>"; the
+# agent reviewer judges the reason. A file, not the PR description: editing a description
+# starts no CI run. Other branches pass.
+# Every output line of a failure starts with FAIL: the CI-failure rework quotes only such lines.
+# Env: GH_TOKEN, GITHUB_REPOSITORY, FACTORY_AGENT_LOGINS; CRITERIA_ROOT (tests only).
 set -uo pipefail
 branch="${1:-}"
 root="${CRITERIA_ROOT:-.}"
@@ -26,13 +28,13 @@ if [ -z "$criteria" ]; then echo "criteria: ok (the plan of #$n has no numbered 
 tested=$(grep -rhoE --include='*.test.ts' --include='*.test.tsx' --include='*.spec.ts' \
   "#$n AC[0-9]+(( *, *| and | )AC[0-9]+)*" "$root/api/src" "$root/web/src" "$root/e2e" 2>/dev/null \
   | grep -oE 'AC[0-9]+' | sort -u)
-skipped=$(printf '%s\n' "${PR_BODY:-}" | tr -d '\r' | grep -iE '^[-* ]*Not automated:' | grep -oE 'AC[0-9]+' | sort -u)
+skipped=$(cat "$root"/knowledge/raw/stories/*-story-"$n"-*.md 2>/dev/null | tr -d '\r' | grep -iE '^[-* ]*Not automated:' | grep -oE 'AC[0-9]+' | sort -u)
 fail=0
 while IFS= read -r line; do
   k="${line%%.*}"
   if ! printf '%s\n%s\n' "$tested" "$skipped" | grep -qx "AC$k"; then
-    [ "$fail" -eq 0 ] && echo "FAIL criteria: acceptance criteria of #$n without a test. Name the criterion in a test title, for example 'test(\"#$n AC$k: ...\")' (one title may name several: '#$n AC1, AC2: ...'), at the lowest test level that proves it (AGENTS.md, Tests). If it cannot be automated, add a line 'Not automated: AC$k <reason>' to the PR description."
-    echo "  AC$k: $(echo "${line#*. }" | cut -c1-120)"
+    [ "$fail" -eq 0 ] && echo "FAIL criteria: acceptance criteria of #$n without a test. Name the criterion in a test title, for example 'test(\"#$n AC$k: ...\")' (one title may name several: '#$n AC1, AC2: ...'), at the lowest test level that proves it (AGENTS.md, Tests). If it cannot be automated, add a line 'Not automated: AC<k> <reason>' to the story record knowledge/raw/stories/*-story-$n-*.md."
+    echo "FAIL criteria: AC$k untested: $(echo "${line#*. }" | cut -c1-120)"
     fail=1
   fi
 done <<< "$criteria"

@@ -85,8 +85,8 @@ Tests are the regression suite: CI runs all of them on every PR, so each test pr
 2. **Lowest level that proves it.** Logic and API routes: a unit or route test (Vitest). Playwright only for a flow that crosses web, API and database or depends on the browser, at most one test per user flow. Do not test the same criterion at two levels.
 3. **A bug fix gets one regression test** that fails without the fix. Run it once against the unchanged code to see it fail.
 4. **No extra tests.** No test without a criterion or a bug, no tests of library or framework behaviour, no snapshot tests. Change or delete an existing test when the story changes its behaviour; do not keep it next to the new one.
-5. **Not automatable:** if a criterion cannot be checked by a test (for example a colour judged by eye), add a line `Not automated: AC<k> <reason>` to the PR description before you push. The human checks it on the preview.
-6. CI enforces 1 and 5 on factory PRs (`.github/scripts/criteria-check.sh`): every criterion of the newest plan needs a test title with its ID or a "Not automated" line. The agent reviewer checks 2 to 4.
+5. **Not automatable:** if a criterion cannot be checked by a test (for example a colour judged by eye), add a line `Not automated: AC<k> <reason>` to the story record (`knowledge/raw/stories/*-story-<n>-*.md`). The human checks it on the preview.
+6. CI enforces 1 and 5 on factory PRs (`.github/scripts/criteria-check.sh`): every criterion of the newest plan needs a test title with its ID or a "Not automated" line in the story record. The agent reviewer checks 2 to 4.
 
 ## Parallel work
 

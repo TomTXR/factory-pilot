@@ -17,7 +17,7 @@ Every test is part of the regression suite. CI runs all tests on every PR, so a 
 |------|-----|------|
 | Plan | Breakdown agent | Numbered Given/When/Then acceptance criteria. They are the test specification; the plan has no separate test section |
 | Build | Builder | One test per criterion, ID at the start of the title: `#46 AC4: ...`. One title may name several: `#46 AC6, AC7: ...`. A bug fix gets one test that fails without the fix |
-| CI | `criteria-check.sh` (required check `checks`) | On `factory/issue-<n>`: reads the newest agent plan of #n and fails for every criterion without a test title or a `Not automated: AC<k> <reason>` line in the PR description |
+| CI | `criteria-check.sh` (required check `checks`) | On `factory/issue-<n>`: reads the newest agent plan of #n and fails for every criterion without a test title or a `Not automated: AC<k> <reason>` line in the story record. Every missing criterion gets its own `FAIL` line, so the CI-failure rework sends all of them to the builder at once |
 | Review | Agent reviewer | Test level, test fails without the change, no extra tests (see below) |
 | Human review | Approver | Checks the "Not automated" criteria on the preview |
 
@@ -40,7 +40,7 @@ The reviewer reports as P1: a test that maps to no criterion and no bug, a crite
 
 ## Limits
 
-- The check reads the PR description from the CI event: write the "Not automated" line before the push.
+- "Not automated" lines live in the story record, a file in the PR, not in the PR description: editing a description starts no CI run, so a line there would never be seen.
 - Tests written before 2026-11-20 have no IDs and keep their titles.
 - The check traces criteria to titles; whether a test really proves its criterion is the reviewer's job.
 

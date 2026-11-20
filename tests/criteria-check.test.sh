@@ -25,9 +25,11 @@ comments() { # login:body pairs as files -> JSON array
 plan "1. Given A, then a." "2. Given B, then b." "3. Given C, then c." > "$W/p3"
 plan "1. Given A, then a." > "$W/p1"
 fail=0
-check() { # name expected-exit branch [pr-body]
+check() { # name expected-exit branch [story-record-text]
+  mkdir -p "$W/repo/knowledge/raw/stories"; rm -f "$W/repo/knowledge/raw/stories/"*
+  [ -n "${4:-}" ] && printf '%s\n' "$4" > "$W/repo/knowledge/raw/stories/2026-11-20-story-46-x.md"
   out=$(PATH="$W/bin:$PATH" COMMENTS="$W/comments.json" GITHUB_REPOSITORY=o/r FACTORY_AGENT_LOGINS=Domigo-Factory-Bot \
-    PR_BODY="${4:-}" CRITERIA_ROOT="$W/repo" bash "$S" "$3" 2>&1); got=$?
+    CRITERIA_ROOT="$W/repo" bash "$S" "$3" 2>&1); got=$?
   [ "$got" = "$2" ] || { echo "FAIL $1: exit $got, want $2"; echo "$out"; fail=1; }
 }
 tests() { # writes the test titles into the three test locations
@@ -42,12 +44,20 @@ tests "#46 AC1: unit" "#46 AC2: web" "#46 AC3: flow"
 check C2 0 factory/issue-46
 tests "#46 AC1: unit" "#46 AC2: web" "no id"
 check C3 1 factory/issue-46
-echo "$out" | grep -q '^FAIL criteria' && echo "$out" | grep -q '  AC3: Given C' || { echo "FAIL C3b: missing FAIL line or AC3"; echo "$out"; fail=1; }
+echo "$out" | grep -q '^FAIL criteria' && echo "$out" | grep -q 'AC3 untested: Given C' || { echo "FAIL C3b: missing FAIL line or AC3"; echo "$out"; fail=1; }
+tests "#46 AC1: unit" "" ""
+check C3c 1 factory/issue-46
+# The CI-failure rework quotes only lines its filter keeps (factory-flow.sh ci-failed): every missing criterion must survive it.
+kept=$(echo "$out" | grep -E '✘|Error|error TS|FAIL|failed|expect|Expected|Received')
+echo "$kept" | grep -q 'AC2 untested' && echo "$kept" | grep -q 'AC3 untested' || { echo "FAIL C3c: the rework filter drops a criterion"; echo "$out"; fail=1; }
 tests "#46 AC1, AC2 and AC3: all in one" "" ""
 check C4 0 factory/issue-46
 tests "#46 AC1: unit" "#46 AC2: web" ""
 check C5 0 factory/issue-46 $'Body\n- Not automated: AC3 visual border colour only'
 check C5b 1 factory/issue-46 'Mentions AC3 but not as not automated'
+mkdir -p "$W/repo/knowledge/raw/stories"; printf -- '- Not automated: AC3 x\n' > "$W/repo/knowledge/raw/stories/2026-11-20-story-146-y.md"
+out=$(PATH="$W/bin:$PATH" COMMENTS="$W/comments.json" GITHUB_REPOSITORY=o/r FACTORY_AGENT_LOGINS=domigo-factory-bot CRITERIA_ROOT="$W/repo" bash "$S" factory/issue-46 2>&1) \
+  && { echo "FAIL C5c: another story's record excused AC3"; fail=1; }
 tests "#146 AC3: other story" "#46 AC1: a" "#46 AC2: b"
 check C6 1 factory/issue-46   # another story's AC3
 tests "#46 AC13: other criterion" "#46 AC2: b" "#46 AC3: c"

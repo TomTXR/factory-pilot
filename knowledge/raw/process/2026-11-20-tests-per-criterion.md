@@ -18,8 +18,10 @@ Research (operator, web, 2026-11-20; mostly practitioner and vendor sources, no 
 
 Decisions (product owner):
 - No separate "Tests" section in the plan: plans must stay short for the human. The numbered acceptance criteria are the test specification; the plans already number them. Test level and scope rules live in AGENTS.md, which the human does not review.
-- A CI check enforces the link ("yes, we should do CI check"): on a factory story branch, every criterion of the newest agent plan needs a test title with `#<issue> AC<k>`, or a line `Not automated: AC<k> <reason>` in the PR description. One title may name several criteria, which keeps the number of tests down.
+- A CI check enforces the link ("yes, we should do CI check"): on a factory story branch, every criterion of the newest agent plan needs a test title with `#<issue> AC<k>`, or a line `Not automated: AC<k> <reason>` in the story record. One title may name several criteria, which keeps the number of tests down.
 - Scope limits are reviewer rules (P1): a test without a criterion or bug, a criterion tested at two levels, an end-to-end test where a unit test proves the same, a "Not automated" reason a test could cover.
 - Mutation testing is deferred until the suite shows weak tests: it adds CI minutes and a tool.
 
-Known limits: the check reads the PR description from the CI event, so a "Not automated" line added after the last push counts only on the next push. Existing tests keep their titles; the rule applies to stories built from now on. Criterion numbers must be unique within the plan (the plans number them continuously).
+Agent review of PR #68 (two P1, fixed): (1) only the first missing criterion reached the builder, because the CI-failure rework quotes only lines with FAIL; every missing criterion now has its own FAIL line. (2) A "Not automated" line in the PR description was never seen: editing a description starts no CI run, and a re-run reuses the old event. The line moved to the story record, a file in the PR.
+
+Known limits: Existing tests keep their titles; the rule applies to stories built from now on. Criterion numbers must be unique within the plan (the plans number them continuously).

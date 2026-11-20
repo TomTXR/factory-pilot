@@ -43,10 +43,9 @@ jobs:
         run: git diff --name-only "origin/$BASE...HEAD" | bash .github/scripts/knowledge-check.sh "$BRANCH"
       - name: Every acceptance criterion has a test
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
-        env:   # via env, not inline: branch names and PR text are untrusted input
+        env:   # via env, not inline: branch names are untrusted input
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.head_ref }}
-          PR_BODY: ${{ github.event.pull_request.body }}
           FACTORY_AGENT_LOGINS: ${{ vars.FACTORY_AGENT_LOGINS }}
         run: bash .github/scripts/criteria-check.sh "$BRANCH"
       - name: Wiki index is generated from the articles
