@@ -14,11 +14,13 @@ Data is always synthetic. Never add real personal data, real addresses of real p
 |------|------|-------|
 | Web | `web/` | React 19, Vite, TypeScript (strict), Tailwind CSS v4, Vitest + Testing Library |
 | API | `api/` | Node 24, Hono, TypeScript (strict), `postgres` client, Vitest |
-| Database | - | PostgreSQL 17. Schema changes only through `api/migrations/NNN_name.sql` |
+| Database | `api/migrations/` | PostgreSQL 17. Schema changes only through `api/migrations/NNN_name.sql`, applied at API start-up |
+| Auth | `api/src/auth*.ts`, `api/src/googleClient.ts` | Sign in with Google, server-side sessions; labelled test sign-in on local, CI and preview stacks |
 | E2E | `e2e/tests/` | Playwright, desktop and mobile viewport |
 | Runtime | `docker-compose.yml` | `db`, `api`, `web` (nginx serves the SPA and proxies `/api` to `api`) |
+| Deploy | `deploy/server/`, `.github/workflows/` | Production `https://pilot.domigo.com`, previews `https://pilot-pr-<n>.domigo.com`, Caddy edge proxy, deploy over a forced SSH command |
 
-The API exposes routes under `/api`. Routes are built in `api/src/app.ts` with injected dependencies, so they can be tested without a database.
+The API exposes routes under `/api`. Routes are built in `api/src/app.ts` with injected dependencies, so they can be tested without a database. How it fits together: [system overview](knowledge/wiki/architecture/system-overview.md), [data model](knowledge/wiki/architecture/data-model.md), [API](knowledge/wiki/architecture/api.md), [authentication](knowledge/wiki/architecture/authentication.md).
 
 ## Commands
 
