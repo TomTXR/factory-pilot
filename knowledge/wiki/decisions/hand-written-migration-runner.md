@@ -1,4 +1,4 @@
-# 018: A hand-written SQL migration runner with forward-only files
+# A hand-written SQL migration runner with forward-only files
 
 > Sources: `api/src/db.ts`; `AGENTS.md` rule 5
 > Raw: [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-properties.md)

@@ -20,7 +20,7 @@ A property is a house or apartment of a home owner, the thing whose maintenance 
 8. Properties are deleted permanently after a confirmation. Nothing else (items, entries) exists yet; the story that adds them must define what happens to them on delete.
 9. The switcher shows the display name, or street and house number with the addition when there is no display name.
 10. The selected property is kept per browser in `localStorage` (`selectedPropertyId`) and removed on sign-out, on a 401 and after account deletion. If the stored id is not in the list, the first property is selected.
-11. Properties without an account are shown to no account and never claimed automatically. If they exist they are assigned by hand. Conflict: the comment in `api/migrations/004_property_accounts.sql` says unowned rows are claimed by the first account that signs in; the code does not do this ([014](../decisions/014-unowned-properties-never-claimed-automatically.md), [013](../decisions/013-first-account-claims-unowned-properties.md)).
+11. Properties without an account are shown to no account and never claimed automatically. If they exist they are assigned by hand. Conflict: the comment in `api/migrations/004_property_accounts.sql` says unowned rows are claimed by the first account that signs in; the code does not do this ([Properties without an owner are never claimed automatically](../decisions/unowned-properties-never-claimed-automatically.md), [The first account that signs in claims properties without an owner](../decisions/first-account-claims-unowned-properties.md)).
 
 ## Relations
 
@@ -38,15 +38,15 @@ A property is a house or apartment of a home owner, the thing whose maintenance 
 
 ## Decisions
 
-- [001 Identity is address plus owner](../decisions/001-property-identity-address-and-owner.md)
-- [002 Hard delete](../decisions/002-properties-are-hard-deleted.md)
-- [003 Editing included](../decisions/003-property-editing-is-included.md)
-- [004 Selection remembered per browser](../decisions/004-selected-property-remembered-per-browser.md)
-- [005 Countries NL and DE](../decisions/005-countries-nl-and-de.md)
-- [011 One account per property, 404 for others](../decisions/011-property-belongs-to-one-account-others-get-404.md)
-- [012 Duplicate check per account](../decisions/012-duplicate-check-per-account.md)
-- [013 Claim of unowned properties (superseded)](../decisions/013-first-account-claims-unowned-properties.md)
-- [014 Unowned properties never claimed](../decisions/014-unowned-properties-never-claimed-automatically.md)
+- [001 Identity is address plus owner](../decisions/property-identity-address-and-owner.md)
+- [002 Hard delete](../decisions/properties-are-hard-deleted.md)
+- [003 Editing included](../decisions/property-editing-is-included.md)
+- [004 Selection remembered per browser](../decisions/selected-property-remembered-per-browser.md)
+- [005 Countries NL and DE](../decisions/countries-nl-and-de.md)
+- [011 One account per property, 404 for others](../decisions/property-belongs-to-one-account-others-get-404.md)
+- [012 Duplicate check per account](../decisions/duplicate-check-per-account.md)
+- [013 Claim of unowned properties (superseded)](../decisions/first-account-claims-unowned-properties.md)
+- [014 Unowned properties never claimed](../decisions/unowned-properties-never-claimed-automatically.md)
 
 ## Stories
 

@@ -13,7 +13,7 @@ description: Read and maintain the project knowledge wiki in knowledge/ (Karpath
 knowledge/
 ├── raw/<topic>/YYYY-MM-DD-slug.md   immutable sources (never edit after creation)
 └── wiki/
-    ├── index.md                     start here: concept map, then every article with link, one-line summary, Updated date
+    ├── index.md                     start here: concept map, then every article with link and one-line summary
     └── <topic>/<article>.md         compiled articles (one level of topics only)
 ```
 
@@ -22,7 +22,7 @@ knowledge/
 | `product` | Product concepts and features: purpose, rules, status, relations | `concept-template.md` |
 | `architecture` | How the software is built: system, data model, API, auth, deploy | `concept-template.md` |
 | `design` | Design concepts, UI patterns, screens; small SVG/PNG files in `design/assets/` | `concept-template.md` |
-| `decisions` | One record per decision, named `NNN-slug.md` | `decision-template.md` |
+| `decisions` | One record per decision, named `<slug>.md` after the decision, without a number (parallel PRs cannot agree on the next number) | `decision-template.md` |
 | `users` | Personas and their needs | `article-template.md` |
 | `process`, `lessons` | How the factory works and why its rules exist | `article-template.md` |
 
@@ -33,7 +33,7 @@ Add a topic only for a genuinely distinct area, and add it to this table, `AGENT
 The single entry point, read in full by every agent before it works. Two parts:
 
 1. **Concept map:** a Mermaid diagram of the concepts and their relations, then a table with one row per concept: concept, article, code entry point (file paths), related concepts. Change it whenever a concept or relation is added, renamed, changed or removed.
-2. **Articles by topic:** every article with link, one-line summary and Updated date. The summary must let an agent decide whether the article is relevant without opening it: name the concepts, rules and decisions it holds.
+2. **Articles by topic:** every article with link and one-line summary, rows sorted alphabetically by article title. No dates: the date is in each article's header, and a date column would change in every touched row and make parallel PRs conflict. The summary must let an agent decide whether the article is relevant without opening it: name the concepts, rules and decisions it holds.
 
 ## Rules
 
@@ -54,7 +54,7 @@ Turn a source into knowledge. Always all steps.
 2. Compile: merge into the article with the same core subject, or create a new article (named after the concept, not the source) using `references/article-template.md`. Distill, do not copy.
 3. Contradiction check against existing articles (rule 4).
 4. Cascade: update every article whose content is materially affected. Add bidirectional See Also links.
-5. Update `wiki/index.md` (every touched article, with Updated date).
+5. Update `wiki/index.md` (summary of every touched article; new rows in alphabetical order).
 
 ### record (factory, in every story PR)
 
@@ -64,7 +64,7 @@ Write what the story built and decided, in the story's own PR, before it is read
 2. Update or create the concept articles (product, architecture, design) of every concept the PR adds or changes: purpose, rules, relations, code entry points. Name articles after the concept, not the story.
 3. Add a decision record in `decisions/` for every decision: a human answer in the issue, or a technical choice in the code that a later agent could question (for example a session lifetime, a data ownership rule, a library). Mark a replaced decision as superseded; do not delete it.
 4. Cascade: update every other article the change makes wrong, with bidirectional See Also links.
-5. Update `index.md` (concept map, summaries, Updated dates). Human answers to agent questions are the most valuable part: they must end up in an article, so the question is not asked again.
+5. Update `index.md` (concept map, summaries; new rows in alphabetical order). Human answers to agent questions are the most valuable part: they must end up in an article, so the question is not asked again.
 
 ### query
 
@@ -86,6 +86,7 @@ Heuristic, report only (issue or PR comment):
 
 ## Conventions
 
+- Parallel PRs: several story PRs write the wiki at the same time. Insert rows in sorted order, never at the end; use no running numbers.
 - No operation log: git history and the story records in `raw/stories/` say what changed, when and why. An append-only file at the end would make every two parallel PRs conflict.
 
 - Standard markdown, relative links, dates as YYYY-MM-DD.

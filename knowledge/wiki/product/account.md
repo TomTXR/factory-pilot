@@ -32,9 +32,9 @@ An account is a person who signs in to the app. It owns properties and has sessi
 
 ## Decisions
 
-- [006 Google only, open sign-up](../decisions/006-google-only-sign-in-with-open-sign-up.md)
-- [007 Matched on the Google user id](../decisions/007-accounts-matched-on-google-user-id.md)
-- [010 Email and name are stored](../decisions/010-store-google-email-and-name.md)
+- [006 Google only, open sign-up](../decisions/google-only-sign-in-with-open-sign-up.md)
+- [007 Matched on the Google user id](../decisions/accounts-matched-on-google-user-id.md)
+- [010 Email and name are stored](../decisions/store-google-email-and-name.md)
 
 ## Stories
 

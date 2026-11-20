@@ -38,10 +38,10 @@ The screens the app has today and what each shows. Shared styles and patterns ar
 
 ## Decisions
 
-- [003 Editing included](../decisions/003-property-editing-is-included.md)
-- [004 Selection remembered per browser](../decisions/004-selected-property-remembered-per-browser.md)
-- [009 Labelled test sign-in](../decisions/009-labelled-test-sign-in-fail-closed-in-production.md)
-- [015 Account deletion](../decisions/015-account-deletion-is-permanent-with-typed-delete.md)
+- [003 Editing included](../decisions/property-editing-is-included.md)
+- [004 Selection remembered per browser](../decisions/selected-property-remembered-per-browser.md)
+- [009 Labelled test sign-in](../decisions/labelled-test-sign-in-fail-closed-in-production.md)
+- [015 Account deletion](../decisions/account-deletion-is-permanent-with-typed-delete.md)
 
 ## Stories
 

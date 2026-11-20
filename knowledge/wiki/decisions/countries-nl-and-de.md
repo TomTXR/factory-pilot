@@ -1,4 +1,4 @@
-# 005: Countries are Netherlands and Germany, Netherlands is the default
+# Countries are Netherlands and Germany, Netherlands is the default
 
 > Sources: Story #20, product owner answer 2 on https://github.com/TomTXR/factory-pilot/issues/20#issuecomment-6980020998; check constraint in `api/migrations/002_properties.sql`
 > Raw: [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-properties.md)

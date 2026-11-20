@@ -22,7 +22,7 @@
 
 ## Decisions
 
-- [{NNN title}](../decisions/{NNN-slug}.md)
+- [{Decision}](../decisions/{slug}.md)
 
 ## Stories
 

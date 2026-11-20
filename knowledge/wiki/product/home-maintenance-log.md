@@ -22,7 +22,7 @@ Only Property exists today. Item and Maintenance entry are planned and have no t
 
 ## Properties
 
-Source: [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-properties.md). Full rules: [Property](property.md). Conflict annotation: the comment in `api/migrations/004_property_accounts.sql` says unowned properties are claimed by the first account that signs in; the code does not do this and the product owner dropped it ([decision 014](../decisions/014-unowned-properties-never-claimed-automatically.md), [013](../decisions/013-first-account-claims-unowned-properties.md)).
+Source: [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-properties.md). Full rules: [Property](property.md). Conflict annotation: the comment in `api/migrations/004_property_accounts.sql` says unowned properties are claimed by the first account that signs in; the code does not do this and the product owner dropped it ([decision](../decisions/unowned-properties-never-claimed-automatically.md), [The first account that signs in claims properties without an owner](../decisions/first-account-claims-unowned-properties.md)).
 
 - A property is identified by its postal address (street, house number, addition, postal code, city, country) plus the owner name (person or entity). Comparison ignores case and surrounding or repeated whitespace. The same address with another owner, or the same owner at another address or addition, is a different property. A duplicate is rejected (API 409).
 - Required: street, house number, postal code, city, owner name. Optional: display name (the property switcher shows it, falling back to street and house number), addition, country (Netherlands by default, Germany selectable).

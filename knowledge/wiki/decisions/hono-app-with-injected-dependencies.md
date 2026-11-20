@@ -1,4 +1,4 @@
-# 017: The API is a Hono app with injected dependencies
+# The API is a Hono app with injected dependencies
 
 > Sources: `AGENTS.md` section Architecture; `api/src/app.ts`
 > Raw: [Story 34 Google sign-in](../../raw/stories/2026-11-19-story-34-google-sign-in.md)

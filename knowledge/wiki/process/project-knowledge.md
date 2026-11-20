@@ -1,7 +1,7 @@
 # Project Knowledge
 
 > Sources: Product owner decisions in the factory spike, 2026-11-19
-> Raw: [Project knowledge duty](../../raw/process/2026-11-19-project-knowledge-duty.md); [Wiki log removed](../../raw/process/2026-11-20-wiki-log-removed.md)
+> Raw: [Project knowledge duty](../../raw/process/2026-11-19-project-knowledge-duty.md); [Wiki log removed](../../raw/process/2026-11-20-wiki-log-removed.md); [Wiki layout for parallel PRs](../../raw/process/2026-11-20-wiki-parallel-layout.md)
 > Updated: 2026-11-20
 
 ## Overview
@@ -50,6 +50,8 @@ Why a check and a review: an instruction does not force an agent, a merge blocke
 Several story PRs are open at the same time, and all of them write the wiki. Git merges line by line and stops with a conflict when two branches change the same or adjacent lines. So the wiki layout must keep parallel PRs apart:
 
 - No operation log. An append-only file makes every two parallel PRs conflict at its last line (#62 twice in one night). Git history and the story records say what changed, when and why. Git's `union` merge setting does not help: GitHub ignores it when it merges.
+- The index has no date column, and its rows are sorted alphabetically. A date column changed in every touched row; rows appended at the end met at the same line. Each article keeps its date in its header.
+- Decision records have names, not numbers (`decisions/server-side-sessions-30-days-hashed-tokens.md`). Two parallel PRs would both take the next number; git sees two different files and reports nothing.
 - Two stories that change the same concept article conflict for a real reason. The factory sends the PR back to the builder, which merges both changes.
 
 ## Limits

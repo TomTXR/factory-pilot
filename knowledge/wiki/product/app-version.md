@@ -31,7 +31,7 @@ Two public signals show which build runs and whether the API and database answer
 
 ## Decisions
 
-- [019 Version from api/package.json](../decisions/019-app-version-from-api-package-json.md)
+- [019 Version from api/package.json](../decisions/app-version-from-api-package-json.md)
 
 ## Stories
 

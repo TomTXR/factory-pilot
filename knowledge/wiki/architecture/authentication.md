@@ -16,7 +16,7 @@ Sign-in with Google
 2. `GET /api/auth/callback` checks that the `state` query equals the `pilot_login` cookie and a pending entry exists and has not expired. It removes the entry whatever the outcome. It then exchanges the code (with the PKCE verifier and client secret), fetches Google's keys and verifies the ID token: RS256 signature, issuer, audience equals the client id, expiry, nonce, a subject and an email. It signs the user in and starts a session. Any failure, or a Google `error`, redirects to `/?auth_error=1` and creates no account; the login screen then shows "Sign-in did not complete. Please try again."
 3. Pending logins are kept in memory of one API process. A restart drops them and a started sign-in then fails the state check. The sources do not discuss running several API instances.
 4. Test sign-in: when there are no Google settings and `DEPLOY_PROJECT` matches `pilot-dev` or `pilot-pr-<digits>`, the mode is `test`. `POST /api/auth/test-login` signs in a fixed synthetic user and the login screen shows a labelled "Test sign-in" button. Body `{"user": "a"}` to `"e"` picks one; default `a`. Users in `TEST_USERS`: `a`, `b` general (two accounts in e2e), `c` only the empty-state e2e test, `d` and `e` the account deletion e2e tests (desktop and mobile). Their emails use `example.com`.
-5. Fail closed: with Google settings the mode is `google` (and `PUBLIC_BASE_URL` is then required). Without them and outside those project names, `loadAuthConfig` throws and the API exits with an error log. Production therefore never offers the test sign-in ([009](../decisions/009-labelled-test-sign-in-fail-closed-in-production.md)).
+5. Fail closed: with Google settings the mode is `google` (and `PUBLIC_BASE_URL` is then required). Without them and outside those project names, `loadAuthConfig` throws and the API exits with an error log. Production therefore never offers the test sign-in ([Labelled test sign-in on non-production stacks, fail closed in production](../decisions/labelled-test-sign-in-fail-closed-in-production.md)).
 
 Session
 
@@ -49,11 +49,11 @@ API access protection
 
 ## Decisions
 
-- [006 Google only, open sign-up](../decisions/006-google-only-sign-in-with-open-sign-up.md)
-- [007 Matched on the Google user id](../decisions/007-accounts-matched-on-google-user-id.md)
-- [008 Server-side sessions, 30 days, hashed tokens](../decisions/008-server-side-sessions-30-days-hashed-tokens.md)
-- [009 Labelled test sign-in, fail closed](../decisions/009-labelled-test-sign-in-fail-closed-in-production.md)
-- [010 Email and name stored](../decisions/010-store-google-email-and-name.md)
+- [006 Google only, open sign-up](../decisions/google-only-sign-in-with-open-sign-up.md)
+- [007 Matched on the Google user id](../decisions/accounts-matched-on-google-user-id.md)
+- [008 Server-side sessions, 30 days, hashed tokens](../decisions/server-side-sessions-30-days-hashed-tokens.md)
+- [009 Labelled test sign-in, fail closed](../decisions/labelled-test-sign-in-fail-closed-in-production.md)
+- [010 Email and name stored](../decisions/store-google-email-and-name.md)
 
 ## Stories
 

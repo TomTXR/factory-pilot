@@ -11,11 +11,11 @@ How the app is built and run: the parts, where they run, and how a change reache
 ## Rules
 
 1. Web: a React 19 single-page app built with Vite (`web/`). The production image serves it with nginx 1.29. nginx proxies `/api/` to `http://api:3000` and answers every other path with `index.html` (`web/nginx.conf`).
-2. API: Node 24 and Hono (`api/`), listening on `PORT` (default 3000). Routes are built by `createApp` with injected dependencies ([017](../decisions/017-hono-app-with-injected-dependencies.md)). The container runs as user `node`.
+2. API: Node 24 and Hono (`api/`), listening on `PORT` (default 3000). Routes are built by `createApp` with injected dependencies ([The API is a Hono app with injected dependencies](../decisions/hono-app-with-injected-dependencies.md)). The container runs as user `node`.
 3. Database: PostgreSQL 17 (`postgres:17-alpine`), database and user `pilot`. The API applies migrations at start-up and exits if one fails ([data model](data-model.md)).
 4. Runtime, `docker-compose.yml`: services `db`, `api`, `web`. The web service is the only one with a host port (`WEB_PORT`, default 8080). The stack name is `COMPOSE_PROJECT_NAME` (default `pilot-dev`). Memory limits: db and api 256 MB, web 128 MB.
 5. Environment variables by name: `POSTGRES_PASSWORD` (compose; default `pilot` locally), `DATABASE_URL` (api, required), `DEPLOY_PROJECT` (api; set from the compose project name), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (api; from `PILOT_GOOGLE_CLIENT_ID` and `PILOT_GOOGLE_CLIENT_SECRET`), `PUBLIC_BASE_URL` (api; fixed to the production URL in `docker-compose.yml`, not per stack), `PORT`, `LOG_LEVEL`, `WEB_PORT`. Secrets are never committed (`AGENTS.md` rule 10).
-6. Local stack: `npm run up` builds and starts the compose stack on http://localhost:8080; `npm run down` removes it and its data. It has no Google settings, so it uses the labelled test sign-in ([009](../decisions/009-labelled-test-sign-in-fail-closed-in-production.md)).
+6. Local stack: `npm run up` builds and starts the compose stack on http://localhost:8080; `npm run down` removes it and its data. It has no Google settings, so it uses the labelled test sign-in ([Labelled test sign-in on non-production stacks, fail closed in production](../decisions/labelled-test-sign-in-fail-closed-in-production.md)).
 7. CI (`.github/workflows/ci.yml`, on pull requests and pushes to `main`): job `checks` runs `npm run setup`, lint, typecheck, unit tests, the shell tests under `tests/` and, on pull requests, the knowledge check; job `e2e` starts the compose stack and runs Playwright with a desktop and a mobile project.
 8. Deploy (`.github/workflows/deploy.yml`, `deploy-target.yml`): green CI on `main` deploys production, green CI on an open pull request deploys a preview, closing the pull request removes it. The workflow connects to the factory VM over SSH; a forced command (`deploy/server/pilot-deploy.sh`) accepts only `deploy prod <sha>`, `deploy pr <n> <sha>`, `destroy pr <n>` and `status`. The script checks out the commit, keeps a per-project env file with a generated `POSTGRES_PASSWORD`, and runs `docker compose up -d --build --wait` with `docker-compose.server.yml` on top. A smoke check polls `/api/health` for up to 30 tries 10 seconds apart.
 9. App secrets named `PILOT_<NAME>` are passed to the production deploy only, on stdin; previews and CI never get them. Only values on one line are passed.
@@ -39,8 +39,8 @@ How the app is built and run: the parts, where they run, and how a change reache
 
 ## Decisions
 
-- [009 Test sign-in and fail-closed start-up](../decisions/009-labelled-test-sign-in-fail-closed-in-production.md)
-- [017 Hono app with injected dependencies](../decisions/017-hono-app-with-injected-dependencies.md)
+- [009 Test sign-in and fail-closed start-up](../decisions/labelled-test-sign-in-fail-closed-in-production.md)
+- [017 Hono app with injected dependencies](../decisions/hono-app-with-injected-dependencies.md)
 
 ## Stories
 
