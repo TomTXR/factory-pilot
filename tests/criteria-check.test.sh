@@ -62,6 +62,10 @@ tests "#146 AC3: other story" "#46 AC1: a" "#46 AC2: b"
 check C6 1 factory/issue-46   # another story's AC3
 tests "#46 AC13: other criterion" "#46 AC2: b" "#46 AC3: c"
 check C6b 1 factory/issue-46  # AC13 is not AC1
+tests "#12 AC3, #46 AC1, AC2: an older test that also proves #46" "" "#46 AC3: c"
+check C12 0 factory/issue-46  # an existing test carries a second story's IDs
+tests "#46 AC1, AC2, #12 AC3: older story's AC3 last" "" ""
+check C12b 1 factory/issue-46 # #12's AC3 does not count for #46
 printf 'free text\n' > "$W/h"
 comments someone-else "$W/p3"
 check C7 0 factory/issue-46   # a plan by a non-agent does not count: no plan, nothing to trace

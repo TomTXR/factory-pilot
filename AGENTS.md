@@ -81,11 +81,11 @@ Every agent, every story:
 
 Tests are the regression suite: CI runs all of them on every PR, so each test protects its behaviour from later stories. Write few tests that prove the story, not many tests that repeat each other.
 
-1. **One test per acceptance criterion.** The plan numbers the criteria. Put the criterion ID at the start of the test title: `test('#46 AC4: the dialog names the email and the number of properties', ...)`. One test may prove several criteria: `'#46 AC6, AC7: ...'`. Untouched old tests keep their titles.
+1. **One test per acceptance criterion.** The plan numbers the criteria. Put the criterion ID at the start of the test title: `test('#46 AC4: the dialog names the email and the number of properties', ...)`. One test may prove several criteria: `'#46 AC6, AC7: ...'`. If an existing test already proves a criterion, add the ID to its title instead of writing a new test: `'#46 AC4, #59 AC13: ...'`. Otherwise untouched old tests keep their titles.
 2. **Lowest level that proves it.** Logic and API routes: a unit or route test (Vitest). Playwright only for a flow that crosses web, API and database or depends on the browser, at most one test per user flow. Do not test the same criterion at two levels.
 3. **A bug fix gets one regression test** that fails without the fix. Run it once against the unchanged code to see it fail.
 4. **No extra tests.** No test without a criterion or a bug, no tests of library or framework behaviour, no snapshot tests. Change or delete an existing test when the story changes its behaviour; do not keep it next to the new one.
-5. **Not automatable:** if a criterion cannot be checked by a test (for example a colour judged by eye), add a line `Not automated: AC<k> <reason>` to the story record (`knowledge/raw/stories/*-story-<n>-*.md`). The human checks it on the preview.
+5. **Not automatable:** only if no test can check a criterion (for example a colour judged by eye), never because other tests already cover it, add a line `Not automated: AC<k> <reason>` to the story record (`knowledge/raw/stories/*-story-<n>-*.md`). The human checks it on the preview.
 6. CI enforces 1 and 5 on factory PRs (`.github/scripts/criteria-check.sh`): every criterion of the newest plan needs a test title with its ID or a "Not automated" line in the story record. The agent reviewer checks 2 to 4.
 
 ## Parallel work
@@ -108,7 +108,7 @@ Several stories are built at the same time, each in its own branch. Git merges l
 Reviewers (human or agent) check, in this order:
 
 1. **Correctness:** does the change do what the issue's acceptance criteria say? Are edge cases handled (empty input, invalid input, missing records)?
-2. **Tests:** does each criterion's test fail without the change? Is it at the lowest level that proves it (section Tests)? A missing test is a P1. So is a new test that maps to no criterion or bug, a criterion tested twice at different levels, or a "Not automated" reason that a test could cover.
+2. **Tests:** does each criterion's test fail without the change? Is it at the lowest level that proves it (section Tests)? A missing test is a P1. So is a new test that maps to no criterion or bug, a criterion tested twice at different levels, or a "Not automated" reason that a test could cover or that points to existing tests (their titles get the ID instead).
 3. **Data safety:** migrations are additive and new files only; no data loss; inputs validated at the API boundary.
 4. **Security:** no secrets in code, no SQL built by string concatenation (use the tagged `sql` template), no unvalidated user input in queries or HTML.
 5. **Rules above:** logger instead of console, no emojis, strict types, mobile layout.
