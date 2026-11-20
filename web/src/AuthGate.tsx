@@ -15,7 +15,7 @@ const SELECTED_KEY = 'selectedPropertyId';
 type State =
   | { kind: 'loading' }
   | { kind: 'error' }
-  | { kind: 'signed-out'; mode: SignInMode }
+  | { kind: 'signed-out'; mode: SignInMode; accountDeleted?: boolean }
   | { kind: 'signed-in'; user: User };
 
 function clearSelection() {
@@ -32,6 +32,7 @@ export function AuthGate({
   loadMode = fetchSignInMode,
   doTestSignIn = testSignIn,
   doSignOut = signOut,
+  doDeleteAccount,
   authFailed: authFailedProp,
   leave = () => window.location.replace('/'),
 }: {
@@ -39,6 +40,7 @@ export function AuthGate({
   loadMode?: () => Promise<SignInMode>;
   doTestSignIn?: () => Promise<void>;
   doSignOut?: () => Promise<void>;
+  doDeleteAccount?: () => Promise<void>;
   authFailed?: boolean;
   /** Full navigation after sign-out, so the back button cannot bring cached data back. */
   leave?: () => void;
@@ -81,6 +83,15 @@ export function AuthGate({
     void check();
   }, [check]);
 
+  const onAccountDeleted = useCallback(async () => {
+    clearSelection();
+    try {
+      setState({ kind: 'signed-out', mode: await loadMode(), accountDeleted: true });
+    } catch {
+      setState({ kind: 'error' });
+    }
+  }, [loadMode]);
+
   const onSignOut = useCallback(async () => {
     try {
       await doSignOut();
@@ -112,6 +123,7 @@ export function AuthGate({
       <LoginScreen
         mode={state.mode}
         failed={authFailed}
+        accountDeleted={state.accountDeleted}
         onTestSignIn={async () => {
           await doTestSignIn();
           await check();
@@ -119,5 +131,11 @@ export function AuthGate({
       />
     );
   }
-  return <App user={state.user} onSignOut={onSignOut} onUnauthorized={onUnauthorized} />;
+  return <App
+      user={state.user}
+      onSignOut={onSignOut}
+      onUnauthorized={onUnauthorized}
+      doDeleteAccount={doDeleteAccount}
+      onAccountDeleted={() => void onAccountDeleted()}
+    />;
 }

@@ -38,11 +38,12 @@ Source: [Story 34 Google sign-in](../../raw/stories/2026-11-19-story-34-google-s
 - A session lasts 30 days from last use and is stored server-side. Sign-out ends it on the server.
 - The Google email and display name are stored. This is an accepted exception to "Data is always synthetic" (product owner, #28).
 - Previews, CI and local stacks have no Google secrets and show a labelled "Test sign-in" as a synthetic test user. Production never offers it and refuses to start without the Google settings.
+- A signed-in user can delete their own account from the Account view (the user name in the header, "Danger zone"). The user must type `DELETE` to confirm; the dialog states how many properties are deleted. The account, all its sessions (on every device) and all its properties are deleted permanently in one transaction, with no grace period, undo or export (product owner, #46). A later sign-in with the same Google account creates a new, empty account. The API logs the user id and the number of deleted properties, not the email or name.
 
 ## Requirements
 
 - Overview per property: what was maintained when, and what it cost.
-- Totals per year and per value category ([GO categories](../domain/go-categories.md)).
+- Totals per year and per value category ([GO categories](go-categories.md)).
 - Mobile first: entries are logged on site on a phone ([owner persona](../users/home-owner.md)).
 - Amounts in EUR, dates in day-month-year order (NL / DE users).
 
@@ -52,6 +53,6 @@ Login methods other than Google, reminders, document uploads, sharing with tenan
 
 ## See Also
 
-- [GO value categories](../domain/go-categories.md)
+- [GO value categories](go-categories.md)
 - [Home owner persona](../users/home-owner.md)
 - [Story workflow](../process/story-workflow.md)

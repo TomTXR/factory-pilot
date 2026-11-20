@@ -140,5 +140,16 @@ export function createAuth(auth: AuthDeps, now: () => Date): { routes: Hono; req
     return c.body(null, 204);
   });
 
+  // The user comes from the session only; the body just has to carry the typed confirmation.
+  routes.delete('/account', requireUser, async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { confirm?: unknown } | null;
+    if (body?.confirm !== 'DELETE') return c.json({ error: 'Confirmation required' }, 400);
+    const userId = c.get('user').id;
+    const deletedProperties = await auth.users.deleteAccount(userId);
+    logger.info('account deleted', { userId, deletedProperties });
+    deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true });
+    return c.body(null, 204);
+  });
+
   return { routes, requireUser };
 }
