@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
+import { createStubAddressClient } from './addressStub.js';
 import { createApp } from './app.js';
 import { type AuthDeps, loadAuthConfig } from './auth.js';
 import { createSessionStore, createUserStore } from './authStores.js';
 import { checkDb, connect, migrate } from './db.js';
 import { createGoogleClient } from './googleClient.js';
 import { logger } from './logger.js';
+import { createPdokClient } from './pdokClient.js';
 import { createPropertyRepository } from './propertyRepository.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -46,7 +48,18 @@ const auth: AuthDeps = {
 };
 await auth.sessions.purgeExpired(new Date());
 
-const app = createApp({ checkDb: () => checkDb(sql), properties: createPropertyRepository(sql), version, auth });
+// Local and CI stacks use the stub with synthetic addresses; previews and production call PDOK.
+const addressMode = /^pilot-dev$/.test(process.env.DEPLOY_PROJECT?.trim() ?? '') ? 'stub' : 'pdok';
+logger.info('address service', { mode: addressMode });
+const address = addressMode === 'stub' ? createStubAddressClient() : createPdokClient();
+
+const app = createApp({
+  checkDb: () => checkDb(sql),
+  properties: createPropertyRepository(sql),
+  version,
+  auth,
+  address,
+});
 
 serve({ fetch: app.fetch, port }, (info) => {
   logger.info('api listening', { port: info.port, version, signIn: authConfig.mode });

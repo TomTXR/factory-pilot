@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createApp } from './app.js';
 import { logger } from './logger.js';
+import { createStubAddressClient } from './addressStub.js';
 import { memoryRepository, testAuth } from './testing.js';
 
 const property = (street: string) => ({
@@ -14,7 +15,7 @@ const property = (street: string) => ({
 function setup() {
   const repo = memoryRepository();
   const auth = testAuth('test', undefined, repo.removeAllOf);
-  const app = createApp({ checkDb: async () => true, properties: repo, version: 'test', auth });
+  const app = createApp({ checkDb: async () => true, properties: repo, version: 'test', auth, address: createStubAddressClient() });
   const signIn = async (user: string) => {
     const res = await app.request('/api/auth/test-login', { method: 'POST', body: JSON.stringify({ user }) });
     const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';

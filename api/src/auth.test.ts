@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
 import { type GoogleClient, loadAuthConfig, SESSION_TTL_MS } from './auth.js';
 import { verifyIdToken } from './googleClient.js';
+import { createStubAddressClient } from './addressStub.js';
 import { memoryRepository, testAuth } from './testing.js';
 
 function build(mode: 'test' | 'google' = 'test', now: () => Date = () => new Date()) {
@@ -18,7 +19,7 @@ function build(mode: 'test' | 'google' = 'test', now: () => Date = () => new Dat
     },
   };
   const auth = testAuth(mode, mode === 'google' ? google : undefined);
-  const app = createApp({ checkDb: async () => true, properties: memoryRepository(), version: 'v', auth, now });
+  const app = createApp({ checkDb: async () => true, properties: memoryRepository(), version: 'v', auth, address: createStubAddressClient(), now });
   return { app, auth, exchanged, failNext: () => (fail = true) };
 }
 

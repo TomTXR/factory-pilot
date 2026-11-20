@@ -231,6 +231,7 @@ export function App({
           key={selected.id}
           title="Edit property"
           submitLabel="Save changes"
+          refresh
           initial={valuesFromProperty(selected)}
           onSubmit={save}
           onCancel={() => setMode('view')}
