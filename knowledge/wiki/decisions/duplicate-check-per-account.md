@@ -1,3 +1,6 @@
+---
+summary: Duplicate check per account (Property)
+---
 # The duplicate check applies per account
 
 > Sources: Story #35 plan criterion 4, https://github.com/TomTXR/factory-pilot/issues/35#issuecomment-7011825436; `api/migrations/004_property_accounts.sql`

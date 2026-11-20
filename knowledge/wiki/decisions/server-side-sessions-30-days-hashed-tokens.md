@@ -1,3 +1,6 @@
+---
+summary: Server-side sessions, 30 days sliding, hashed tokens (Session)
+---
 # Server-side sessions last 30 days from last use, with hashed tokens
 
 > Sources: Story #28, product owner answer 6 on https://github.com/TomTXR/factory-pilot/issues/28#issuecomment-7005844848 ("probably 30 days is a good time"); refined plan https://github.com/TomTXR/factory-pilot/issues/28#issuecomment-7005992740; `api/src/auth.ts`, `api/src/authRoutes.ts`

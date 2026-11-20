@@ -1,3 +1,6 @@
+---
+summary: Web (React, nginx), API (Hono), PostgreSQL 17, compose services and environment variables by name, local stack, CI, deploy script, preview and production environments, Caddy edge proxy
+---
 # System overview
 
 > Sources: code and configuration on `main`, checked 2026-11-19; Story #63

@@ -1,3 +1,9 @@
+---
+summary: GO Safer / Cheaper / Better and how the pilot uses them; open question on boiler service
+concepts:
+  - name: GO category
+    status: planned
+---
 # GO Value Categories
 
 > Sources: DomiGO product overview, Unknown; Factory spike team, 2026-11-17 (SYNTHETIC)

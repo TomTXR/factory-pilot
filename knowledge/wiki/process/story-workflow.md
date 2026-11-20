@@ -1,3 +1,6 @@
+---
+summary: Stages, wiki update in every PR, human commands at the two gates, cancel, story split into sub-issues, human tasks, task comments and app secrets, follow-up stories, dependencies, quiet notifications, story owners, release, stalls and the watchdog
+---
 # Story Workflow
 
 > Sources: Product owner decisions in the factory spike, 2026-11-19

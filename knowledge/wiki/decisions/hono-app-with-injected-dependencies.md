@@ -1,3 +1,6 @@
+---
+summary: Hono app with injected dependencies, reason for Hono unknown (API)
+---
 # The API is a Hono app with injected dependencies
 
 > Sources: `AGENTS.md` section Architecture; `api/src/app.ts`

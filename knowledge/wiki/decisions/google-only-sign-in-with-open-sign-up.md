@@ -1,3 +1,6 @@
+---
+summary: Google is the only sign-in, open sign-up, scopes openid email profile (Account)
+---
 # Google is the only sign-in method and any Google account can sign up
 
 > Sources: Story #28, product owner answer 1 on https://github.com/TomTXR/factory-pilot/issues/28#issuecomment-7005844848; scopes in `api/src/googleClient.ts`

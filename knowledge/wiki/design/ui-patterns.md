@@ -1,3 +1,6 @@
+---
+summary: Button classes, form fields, inline errors, native modal dialogs, status and alert regions, danger zone, layout widths
+---
 # UI patterns
 
 > Sources: `web/src/index.css`, `web/src/components/`, checked 2026-11-19; Story #63

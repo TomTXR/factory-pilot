@@ -1,3 +1,6 @@
+---
+summary: Property foreign key has no cascade, session foreign key has (Account deletion)
+---
 # properties.account_user_id has no cascade on delete, sessions.user_id has one
 
 > Sources: Comment in `api/migrations/004_property_accounts.sql`; `deleteAccount` in `api/src/authStores.ts`

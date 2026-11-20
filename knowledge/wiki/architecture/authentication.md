@@ -1,3 +1,16 @@
+---
+summary: Concepts Sign-in with Google (code flow, PKCE, state, nonce), test sign-in, fail-closed start-up, Session (hashed cookie token, 30 days sliding), API access protection
+concepts:
+  - name: Session
+    code: api/src/auth.ts, api/src/authStores.ts, api/src/authRoutes.ts, web/src/AuthGate.tsx
+    relates: identifies Account
+  - name: Sign-in with Google
+    code: api/src/authRoutes.ts, api/src/googleClient.ts, api/src/auth.ts, web/src/components/LoginScreen.tsx
+    relates: creates Account; starts Session
+  - name: API access protection
+    code: api/src/authRoutes.ts, api/src/app.ts
+    relates: requires Session; guards Property
+---
 # Authentication: Google sign-in, sessions and API access protection
 
 > Sources: `api/src/auth.ts`, `authRoutes.ts`, `authStores.ts`, `googleClient.ts`, `server.ts`, checked 2026-11-19; Story #34; product owner answers on #28; Story #63

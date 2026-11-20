@@ -1,3 +1,6 @@
+---
+summary: Login, empty state, switcher, details, add and edit form, delete dialogs, Account view, header and footer; behaviour at 390 px as far as the code shows it
+---
 # Screens
 
 > Sources: `web/src` on `main`, checked 2026-11-19; Stories #18, #20, #34, #46; Story #63

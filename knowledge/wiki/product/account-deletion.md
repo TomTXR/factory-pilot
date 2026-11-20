@@ -1,3 +1,10 @@
+---
+summary: Account view, danger zone, typed DELETE, what is deleted in one transaction, no grace period, logging
+concepts:
+  - name: Account deletion
+    code: api/src/authRoutes.ts, api/src/authStores.ts, web/src/components/DeleteAccountDialog.tsx
+    relates: removes Account; deletes Property; deletes Session
+---
 # Account deletion
 
 > Sources: Story #46, 2026-11-19; Story #63, 2026-11-19

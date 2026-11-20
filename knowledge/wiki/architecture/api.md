@@ -1,3 +1,6 @@
+---
+summary: Routes with method, public or protected, status codes, error bodies, dependency injection, logging
+---
 # API
 
 > Sources: `api/src/app.ts`, `api/src/authRoutes.ts`, checked 2026-11-19; Story #63

@@ -1,3 +1,6 @@
+---
+summary: Tables app_info, properties, users, sessions, schema_migrations: keys, constraints, unique indexes, cascading and non-cascading foreign keys, migrations 001 to 004, the migration runner, stale comment in 004
+---
 # Data model
 
 > Sources: `api/migrations/001_init.sql` to `004_property_accounts.sql`, `api/src/db.ts`, checked 2026-11-19; Story #63
