@@ -96,3 +96,6 @@ Append-only. Newest entries at the bottom.
 - Raw: raw/stories/2026-11-19-story-63-document-current-app.md; backfilled raw/stories/2026-11-18-story-18-version-footer.md, raw/stories/2026-11-19-story-35-per-account-properties.md, raw/stories/2026-11-19-story-46-delete-account.md
 - Created: Property, Account, Account deletion, App version and health status, System overview, Data model, API, Authentication, Screens, UI patterns, decision records 001 to 019
 - Updated: Knowledge Base Index (concept map rewritten as a valid four-column table, planned concepts marked, all articles listed), Home Maintenance Log (overview, links, planned marks, annotation of the stale comment in migration 004), AGENTS.md (architecture table and links)
+
+## [2026-11-19] ingest | Factory Spike Lessons
+- Raw: raw/lessons/2026-11-19-board-add-race.md
