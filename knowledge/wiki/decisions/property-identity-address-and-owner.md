@@ -1,3 +1,6 @@
+---
+summary: Property identity is normalised address plus owner name (Property)
+---
 # A property is identified by its normalised address plus owner name
 
 > Sources: Story #20, product owner answers 2 and 3 on https://github.com/TomTXR/factory-pilot/issues/20#issuecomment-6980020998 (proposed defaults accepted); unique index in `api/migrations/004_property_accounts.sql`

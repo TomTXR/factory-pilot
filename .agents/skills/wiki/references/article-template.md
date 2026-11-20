@@ -1,3 +1,6 @@
+---
+summary: {One line: what this article holds, so that an agent can decide whether to read it.}
+---
 # {Title}
 
 > Sources: {Origin1, YYYY-MM-DD; Origin2, YYYY-MM-DD}

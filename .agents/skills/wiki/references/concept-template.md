@@ -1,3 +1,10 @@
+---
+summary: {One line: the concept, its main rules and decisions, so that an agent can decide whether to read on.}
+concepts:
+  - name: {Concept}
+    code: {path}, {path}
+    relates: {label} {Other concept}; {label} {Other concept}
+---
 # {Concept}
 
 > Sources: {Story #n, YYYY-MM-DD; ...}

@@ -1,3 +1,6 @@
+---
+summary: Properties are deleted permanently after confirmation (Property)
+---
 # Properties are deleted permanently after confirmation
 
 > Sources: Story #20, product owner answer 5 on https://github.com/TomTXR/factory-pilot/issues/20#issuecomment-6980020998

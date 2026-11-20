@@ -1,3 +1,13 @@
+---
+summary: Product overview and scope v1: data model (Property exists; Item and Maintenance entry planned), requirements, out of scope, links to the concept articles (SYNTHETIC)
+concepts:
+  - name: Item
+    status: planned
+    relates: belongs to Property
+  - name: Maintenance entry
+    status: planned
+    relates: belongs to Item; is tagged with GO category
+---
 # Home Maintenance Log
 
 > Sources: Factory spike team, 2026-11-17 (SYNTHETIC); product owner answers on issue #20, 2026-11-18; stories #34 and #35 and product owner answers on #28, 2026-11-19; stories #46 and #63, 2026-11-19

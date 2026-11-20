@@ -1,3 +1,6 @@
+---
+summary: Accounts are matched on the Google user id, not the email (Account)
+---
 # Accounts are matched on the Google user id, not on the email
 
 > Sources: Story #34 plan restating #28 (https://github.com/TomTXR/factory-pilot/issues/28#issuecomment-7005992740); `google_sub` in `api/migrations/003_users_sessions.sql`

@@ -1,3 +1,6 @@
+---
+summary: App version is the version in api/package.json (App version and health status)
+---
 # The app version is the version in api/package.json, shown in the footer
 
 > Sources: Story #18, product owner comment on https://github.com/TomTXR/factory-pilot/issues/18#issuecomment-6983293094 ("the version should follow standard versioning schema x.y.z"); `api/src/server.ts`

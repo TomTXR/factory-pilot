@@ -1,3 +1,6 @@
+---
+summary: Mobile logging on site, yearly totals, Google sign-in decision, EUR only (SYNTHETIC)
+---
 # Home Owner Persona
 
 > Sources: Synthetic interview, 2026-11-17 (SYNTHETIC)

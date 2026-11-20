@@ -1,3 +1,6 @@
+---
+summary: A property belongs to one account, other accounts get 404 (Property, API access protection)
+---
 # A property belongs to exactly one account, other accounts get 404
 
 > Sources: Story #35 plan https://github.com/TomTXR/factory-pilot/issues/35#issuecomment-7011825436; `api/src/propertyRepository.ts`

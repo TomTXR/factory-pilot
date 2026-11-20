@@ -1,3 +1,6 @@
+---
+summary: Editing is part of the first version, at the product owner's request (Property)
+---
 # Editing a property is part of the first version
 
 > Sources: Story #20, product owner answer 6 on https://github.com/TomTXR/factory-pilot/issues/20#issuecomment-6980020998

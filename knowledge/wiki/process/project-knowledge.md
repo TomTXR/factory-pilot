@@ -1,7 +1,10 @@
+---
+summary: How the wiki is structured, read and updated: index generated from article front matter, concept map, topics, who writes what in every PR, CI checks, reviewer duty, rules for parallel PRs (no running numbers, generated lists, regenerate on conflict), why
+---
 # Project Knowledge
 
 > Sources: Product owner decisions in the factory spike, 2026-11-19
-> Raw: [Project knowledge duty](../../raw/process/2026-11-19-project-knowledge-duty.md); [Wiki log removed](../../raw/process/2026-11-20-wiki-log-removed.md); [Wiki layout for parallel PRs](../../raw/process/2026-11-20-wiki-parallel-layout.md)
+> Raw: [Project knowledge duty](../../raw/process/2026-11-19-project-knowledge-duty.md); [Wiki log removed](../../raw/process/2026-11-20-wiki-log-removed.md); [Wiki layout for parallel PRs](../../raw/process/2026-11-20-wiki-parallel-layout.md); [Parallel work rules](../../raw/process/2026-11-20-parallel-work-rules.md)
 > Updated: 2026-11-20
 
 ## Overview
@@ -12,7 +15,7 @@ The wiki in `knowledge/` is the project's memory. Its main reader is the next ag
 
 | Place | Holds |
 |-------|-------|
-| `wiki/index.md` | The single entry point: concept map, then every article with a one-line summary |
+| `wiki/index.md` | The single entry point: concept map, then every article with a one-line summary. Generated from the articles' front matter |
 | `wiki/product/` | Product concepts and features: purpose, rules, status, relations |
 | `wiki/architecture/` | How the software is built: system, data model, API, auth, deploy |
 | `wiki/design/` | Design concepts, UI patterns, screens; small SVG/PNG in `design/assets/` |
@@ -47,12 +50,17 @@ Why a check and a review: an instruction does not force an agent, a merge blocke
 
 ## Parallel changes
 
-Several story PRs are open at the same time, and all of them write the wiki. Git merges line by line and stops with a conflict when two branches change the same or adjacent lines. So the wiki layout must keep parallel PRs apart:
+Several story PRs are open at the same time, and all of them write the wiki and the code. Git merges line by line and stops with a conflict only when two branches change the same or adjacent lines. Human teams solved this with standard patterns; the factory uses them for every file, without special handling per asset ([AGENTS.md](../../../AGENTS.md), section "Parallel work"):
 
-- No operation log. An append-only file makes every two parallel PRs conflict at its last line (#62 twice in one night). Git history and the story records say what changed, when and why. Git's `union` merge setting does not help: GitHub ignores it when it merges.
-- The index has no date column, and its rows are sorted alphabetically. A date column changed in every touched row; rows appended at the end met at the same line. Each article keeps its date in its header.
-- Decision records have names, not numbers (`decisions/server-side-sessions-30-days-hashed-tokens.md`). Two parallel PRs would both take the next number; git sees two different files and reports nothing.
-- Two stories that change the same concept article conflict for a real reason. The factory sends the PR back to the builder, which merges both changes.
+| Pattern | Rule | Examples in this repo |
+|---------|------|-----------------------|
+| No shared counters | Name by content, UTC time or a GitHub number, never "the next number". Two branches would take the same number and git reports nothing. | Decision records named after the decision; migrations `YYYYMMDDTHHMM_name.sql`; story records by issue number |
+| One file per item | No list that every change appends to by hand | No operation log (git history and story records carry it) |
+| Generated aggregates | Lists are generated; on a conflict take either side and regenerate | `index.md` from the articles' front matter (`npm run wiki:index`); `package-lock.json` (`npm install`) |
+| Test the merged result | CI runs on the branch brought up to date with `main` | Strict branch protection; the release updates the branch and reruns CI |
+| Real conflicts to the author | Two changes to the same code or article: merge both intents | The factory sends a conflicting PR back to the builder |
+
+The index is generated because every story PR touched it: a date column changed in every touched row, and new rows met at the end of a table. Now each article carries its own summary and concepts in front matter; the generator sorts everything, so parallel additions land on different lines. A CI step fails when the index is stale or the front matter names an unknown concept.
 
 ## Limits
 

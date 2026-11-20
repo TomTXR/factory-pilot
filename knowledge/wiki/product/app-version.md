@@ -1,3 +1,9 @@
+---
+summary: `/api/version`, footer text, `/api/health` answers, API status badge, use in the deploy smoke check
+concepts:
+  - name: App version and health status
+    code: api/src/app.ts, api/src/server.ts, web/src/api.ts, web/src/App.tsx
+---
 # App version and health status
 
 > Sources: Story #18, 2026-11-18; Story #63, 2026-11-19

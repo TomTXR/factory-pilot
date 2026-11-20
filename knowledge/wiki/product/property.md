@@ -1,3 +1,12 @@
+---
+summary: Property concept: identity is address plus owner, required and optional fields, validation limits, one account per property, 404 for other accounts, hard delete, selection per browser, unowned properties never claimed
+concepts:
+  - name: Property
+    code: api/src/properties.ts, api/src/propertyRepository.ts, api/migrations/002_properties.sql, api/migrations/004_property_accounts.sql, web/src/components/PropertyForm.tsx
+  - name: Property sharing
+    status: planned
+    relates: extends Property; involves Account
+---
 # Property
 
 > Sources: Story #20, 2026-11-18; Story #35, 2026-11-19; Story #63, 2026-11-19

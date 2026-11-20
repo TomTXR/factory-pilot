@@ -1,3 +1,10 @@
+---
+summary: Account concept: created on first Google sign-in, matched on Google user id, stored fields, email and name stored as exception to synthetic data
+concepts:
+  - name: Account
+    code: api/src/auth.ts, api/src/authStores.ts, api/migrations/003_users_sessions.sql, web/src/components/AccountView.tsx
+    relates: owns Property
+---
 # Account
 
 > Sources: Story #34, 2026-11-19; product owner answers on #28, 2026-11-19; Story #63, 2026-11-19

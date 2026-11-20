@@ -1,3 +1,6 @@
+---
+summary: Superseded: first account claims unowned properties (Property)
+---
 # The first account that signs in claims properties without an owner
 
 > Sources: Story #28 plan question 3 and answer 3 on https://github.com/TomTXR/factory-pilot/issues/28#issuecomment-7005844848 ("there are no properties in production but if there are your suggestion makes sense"); refined plan https://github.com/TomTXR/factory-pilot/issues/28#issuecomment-7005992740

@@ -1,3 +1,6 @@
+---
+summary: Unowned properties are never claimed automatically, replaces the claim by the first account (Property)
+---
 # Properties without an owner are never claimed automatically
 
 > Sources: Story #35, product owner `/changes` comment on https://github.com/TomTXR/factory-pilot/issues/35#issuecomment-7013278032; code in `api/src/propertyRepository.ts` (no claim code)

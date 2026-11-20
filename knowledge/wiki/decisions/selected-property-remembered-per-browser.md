@@ -1,3 +1,6 @@
+---
+summary: Selected property is remembered per browser and cleared on sign-out (Property)
+---
 # The selected property is remembered per browser and cleared on sign-out
 
 > Sources: Story #20, product owner answer 7 on https://github.com/TomTXR/factory-pilot/issues/20#issuecomment-6980020998; sign-out clearing from `web/src/AuthGate.tsx`

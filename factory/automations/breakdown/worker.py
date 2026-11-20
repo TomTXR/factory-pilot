@@ -87,7 +87,7 @@ class Breakdown(GitHubRepository):
             "   - `## Context used` - the wiki articles and files you relied on, as repository paths.\n"
             "   - `## Knowledge updates` - the wiki articles the build must create or update "
             "(concept articles in product/, architecture/, design/; decision records in decisions/ for the "
-            "decisions this plan or the human's answers take; the concept map in index.md), each with "
+            "decisions this plan or the human's answers take; new or changed concepts and relations in the articles' front matter, from which the index is generated), each with "
             "one line on what changes. The builder writes them in the same pull request.\n"
             "   - `## Open questions` - numbered questions only the product owner can answer, each with "
             "your proposed default. Write `None` if there are none.\n"

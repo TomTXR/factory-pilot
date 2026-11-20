@@ -1,3 +1,6 @@
+---
+summary: Hand-written forward-only migration runner, reason unknown (Data model)
+---
 # A hand-written SQL migration runner with forward-only files
 
 > Sources: `api/src/db.ts`; `AGENTS.md` rule 5
