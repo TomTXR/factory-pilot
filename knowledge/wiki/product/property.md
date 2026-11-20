@@ -1,5 +1,5 @@
 ---
-summary: Property concept: identity is address plus owner, required and optional fields, validation limits, one account per property, 404 for other accounts, hard delete, selection per browser, unowned properties never claimed
+summary: Property concept: country asked first, address can be filled by the address search, identity is address plus owner, required and optional fields, validation limits, one account per property, 404 for other accounts, hard delete, selection per browser, unowned properties never claimed
 concepts:
   - name: Property
     code: api/src/properties.ts, api/src/propertyRepository.ts, api/migrations/002_properties.sql, api/migrations/004_property_accounts.sql, web/src/components/PropertyForm.tsx
@@ -9,9 +9,9 @@ concepts:
 ---
 # Property
 
-> Sources: Story #20, 2026-11-18; Story #35, 2026-11-19; Story #63, 2026-11-19
-> Raw: [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-properties.md); [Story 35 per-account properties](../../raw/stories/2026-11-19-story-35-per-account-properties.md); [Story 63](../../raw/stories/2026-11-19-story-63-document-current-app.md)
-> Updated: 2026-11-19
+> Sources: Story #20, 2026-11-18; Story #35, 2026-11-19; Story #63, 2026-11-19; Story #59, 2026-11-20
+> Raw: [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-properties.md); [Story 35 per-account properties](../../raw/stories/2026-11-19-story-35-per-account-properties.md); [Story 63](../../raw/stories/2026-11-19-story-63-document-current-app.md); [Story 59](../../raw/stories/2026-11-20-story-59-address-search.md)
+> Updated: 2026-11-20
 
 ## Purpose
 
@@ -21,7 +21,7 @@ A property is a house or apartment of a home owner, the thing whose maintenance 
 
 1. A property is identified by street, house number, addition, postal code, city, country and owner name, compared lower-cased with whitespace collapsed. A duplicate within one account is rejected with 409. The rule lives in `normaliseKey` (`api/src/properties.ts`) and the unique index `properties_account_identity_idx`; the two must match.
 2. Required: street, house number, postal code, city, owner name. Optional: display name, addition, country, characteristics. Text fields hold at most 200 characters, notes at most 2000.
-3. Country is NL (default) or DE.
+3. Country is NL (default) or DE. The form asks for it before the address fields; for NL the address can be filled with the [address search](address-search.md), which writes the postal code as "1234 AB".
 4. Optional characteristics: type (house, apartment, other), year built (whole number from 1500 up to the current year), living area in m2 (above 0, at most 100000, rounded to 2 decimals), rooms (whole number 1 to 1000), notes.
 5. Create and update use the same validation (`validateProperty`). A failed validation answers 400 with one message per field.
 6. A property belongs to exactly one account, the one that created it. The owner is taken from the session; an owner field in a request body is ignored; the owning account id is never in a response.
@@ -33,6 +33,7 @@ A property is a house or apartment of a home owner, the thing whose maintenance 
 
 ## Relations
 
+- Address search: fills the address fields of the form for Dutch properties ([address search](address-search.md)).
 - Account: owns the property; deleting the account deletes its properties ([account](account.md), [account deletion](account-deletion.md)).
 - Item (planned): will belong to a property ([overview](home-maintenance-log.md)).
 - Property sharing (planned, #32): not built; today a property has exactly one account.
@@ -61,9 +62,11 @@ A property is a house or apartment of a home owner, the thing whose maintenance 
 
 - #20: add, switch, view, edit, delete properties.
 - #35: properties belong to an account.
+- #59: country first, address search.
 
 ## See Also
 
+- [Address search](address-search.md)
 - [Home Maintenance Log](home-maintenance-log.md)
 - [Account](account.md)
 - [Data model](../architecture/data-model.md)

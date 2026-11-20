@@ -3,9 +3,9 @@ summary: Button classes, form fields, inline errors, native modal dialogs, statu
 ---
 # UI patterns
 
-> Sources: `web/src/index.css`, `web/src/components/`, checked 2026-11-19; Story #63
+> Sources: `web/src/index.css`, `web/src/components/`, checked 2026-11-19; Story #63; Story #59
 > Raw: [Story 63](../../raw/stories/2026-11-19-story-63-document-current-app.md)
-> Updated: 2026-11-19
+> Updated: 2026-11-20
 
 ## Purpose
 
@@ -22,7 +22,9 @@ The shared styles and interaction patterns of the web app, so new screens look a
 7. Destructive areas: a section with a red border and a red heading ("Danger zone"). Permanent deletion of a whole account needs a typed word; deletion of one property needs only a confirmation dialog.
 8. Layout: one centred column, `max-w-3xl`; cards are white, rounded (`rounded-xl`), with a slate border. Login uses a narrower column (`max-w-md`).
 9. Text: sentence case labels, no emojis (`AGENTS.md` rule 3). Amounts will be in EUR and dates day-month-year (requirement in the [overview](../product/home-maintenance-log.md); no UI shows them yet).
-10. Every screen must work at 390 px and on desktop ([screens](screens.md), `AGENTS.md` rule 8).
+10. Combobox with suggestions (`AddressSearch`): an input with `role="combobox"`, `aria-expanded`, `aria-controls` and `aria-activedescendant`, `autocomplete="off"`, and a `role="listbox"` of `role="option"` items in the normal flow below the input. Arrow keys move, Enter picks (and never submits the form while the list is open), Escape closes. Text comes from plain fields, never HTML. Loading and result counts use `role="status"`, failures `role="alert"`.
+11. "From BAG" marker: a small blue badge inside the field label for a value filled by the address search; it disappears when the user edits the field and exists only while the form is open.
+12. Every screen must work at 390 px and on desktop ([screens](screens.md), `AGENTS.md` rule 8).
 
 ## Relations
 
@@ -43,5 +45,6 @@ The shared styles and interaction patterns of the web app, so new screens look a
 
 ## See Also
 
+- [Address search](../product/address-search.md)
 - [Screens](screens.md)
 - [Concept map](../index.md)

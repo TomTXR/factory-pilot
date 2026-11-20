@@ -12,6 +12,7 @@ Solid boxes exist in the code; dashed boxes are planned and have no code yet.
 graph LR
   Account["Account"]
   Accountdeletion["Account deletion"]
+  Addresssearch["Address search"]
   APIaccessprotection["API access protection"]
   Appversionandhealthstatus["App version and health status"]
   GOcategory["GO category"]
@@ -25,6 +26,7 @@ graph LR
   Accountdeletion -->|removes| Account
   Accountdeletion -->|deletes| Property
   Accountdeletion -->|deletes| Session
+  Addresssearch -->|fills| Property
   APIaccessprotection -->|guards| Property
   APIaccessprotection -->|requires| Session
   Item -.->|belongs to| Property
@@ -46,12 +48,13 @@ graph LR
 |---------|---------|------------------|------------|
 | Account | [Account](product/account.md) | `api/src/auth.ts`, `api/src/authStores.ts`, `api/migrations/003_users_sessions.sql`, `web/src/components/AccountView.tsx` | Account deletion, Property, Property sharing, Session, Sign-in with Google |
 | Account deletion | [Account deletion](product/account-deletion.md) | `api/src/authRoutes.ts`, `api/src/authStores.ts`, `web/src/components/DeleteAccountDialog.tsx` | Account, Property, Session |
+| Address search | [Address search](product/address-search.md) | `api/src/addressClient.ts`, `api/src/pdokClient.ts`, `api/src/addressStub.ts`, `api/src/app.ts`, `web/src/components/AddressSearch.tsx`, `web/src/components/PropertyForm.tsx` | Property |
 | API access protection | [Authentication: Google sign-in, sessions and API access protection](architecture/authentication.md) | `api/src/authRoutes.ts`, `api/src/app.ts` | Property, Session |
 | App version and health status | [App version and health status](product/app-version.md) | `api/src/app.ts`, `api/src/server.ts`, `web/src/api.ts`, `web/src/App.tsx` | none |
 | GO category (planned) | [GO Value Categories](product/go-categories.md) | none (planned) | Maintenance entry |
 | Item (planned) | [Home Maintenance Log](product/home-maintenance-log.md) | none (planned) | Maintenance entry, Property |
 | Maintenance entry (planned) | [Home Maintenance Log](product/home-maintenance-log.md) | none (planned) | GO category, Item |
-| Property | [Property](product/property.md) | `api/src/properties.ts`, `api/src/propertyRepository.ts`, `api/migrations/002_properties.sql`, `api/migrations/004_property_accounts.sql`, `web/src/components/PropertyForm.tsx` | Account, Account deletion, API access protection, Item, Property sharing |
+| Property | [Property](product/property.md) | `api/src/properties.ts`, `api/src/propertyRepository.ts`, `api/migrations/002_properties.sql`, `api/migrations/004_property_accounts.sql`, `web/src/components/PropertyForm.tsx` | Account, Account deletion, Address search, API access protection, Item, Property sharing |
 | Property sharing (planned) | [Property](product/property.md) | none (planned) | Account, Property |
 | Session | [Authentication: Google sign-in, sessions and API access protection](architecture/authentication.md) | `api/src/auth.ts`, `api/src/authStores.ts`, `api/src/authRoutes.ts`, `web/src/AuthGate.tsx` | Account, Account deletion, API access protection, Sign-in with Google |
 | Sign-in with Google | [Authentication: Google sign-in, sessions and API access protection](architecture/authentication.md) | `api/src/authRoutes.ts`, `api/src/googleClient.ts`, `api/src/auth.ts`, `web/src/components/LoginScreen.tsx` | Account, Session |
@@ -66,10 +69,11 @@ Product concepts and features: purpose, rules, status, relations.
 |---------|---------|
 | [Account](product/account.md) | Account concept: created on first Google sign-in, matched on Google user id, stored fields, email and name stored as exception to synthetic data |
 | [Account deletion](product/account-deletion.md) | Account view, danger zone, typed DELETE, what is deleted in one transaction, no grace period, logging |
+| [Address search](product/address-search.md) | Address search concept: Dutch properties only, Find address combobox (PDOK suggest and lookup through our API), Look up in BAG refresh on edit, From BAG markers only in the open form, nothing saved without the user, stub in CI and local |
 | [App version and health status](product/app-version.md) | `/api/version`, footer text, `/api/health` answers, API status badge, use in the deploy smoke check |
 | [GO Value Categories](product/go-categories.md) | GO Safer / Cheaper / Better and how the pilot uses them; open question on boiler service |
 | [Home Maintenance Log](product/home-maintenance-log.md) | Product overview and scope v1: data model (Property exists; Item and Maintenance entry planned), requirements, out of scope, links to the concept articles (SYNTHETIC) |
-| [Property](product/property.md) | Property concept: identity is address plus owner, required and optional fields, validation limits, one account per property, 404 for other accounts, hard delete, selection per browser, unowned properties never claimed |
+| [Property](product/property.md) | Property concept: country asked first, address can be filled by the address search, identity is address plus owner, required and optional fields, validation limits, one account per property, 404 for other accounts, hard delete, selection per browser, unowned properties never claimed |
 
 ## architecture
 
@@ -102,7 +106,10 @@ One record per product or technical decision, named after the decision.
 | [A property is identified by its normalised address plus owner name](decisions/property-identity-address-and-owner.md) | Property identity is normalised address plus owner name (Property) |
 | [Account deletion is permanent, confirmed by typing DELETE, in one transaction](decisions/account-deletion-is-permanent-with-typed-delete.md) | Account deletion is permanent, typed DELETE, one transaction (Account deletion) |
 | [Accounts are matched on the Google user id, not on the email](decisions/accounts-matched-on-google-user-id.md) | Accounts are matched on the Google user id, not the email (Account) |
+| [Address search goes through PDOK via our own API](decisions/address-search-through-pdok-via-the-api.md) | Keyless PDOK Locatieserver suggest, lookup and free behind our own API routes, not called from the browser, not the keyed Kadaster API |
+| [BAG values are suggestions, marked only in the form](decisions/bag-values-are-suggestions-marked-only-in-the-form.md) | BAG values fill the open form as marked suggestions; nothing is stored until the user saves, and the source is not stored |
 | [Countries are Netherlands and Germany, Netherlands is the default](decisions/countries-nl-and-de.md) | Countries NL and DE, NL default (Property) |
+| [Country before address, search replaces the blur lookup](decisions/country-before-address-and-search-replaces-blur-lookup.md) | Country is the first address field and controls whether the search is offered; address search replaces the lookup on leaving a field; postal code lookup stays only as the edit refresh |
 | [Editing a property is part of the first version](decisions/property-editing-is-included.md) | Editing is part of the first version, at the product owner's request (Property) |
 | [Google is the only sign-in method and any Google account can sign up](decisions/google-only-sign-in-with-open-sign-up.md) | Google is the only sign-in, open sign-up, scopes openid email profile (Account) |
 | [Labelled test sign-in on non-production stacks, fail closed in production](decisions/labelled-test-sign-in-fail-closed-in-production.md) | Labelled test sign-in on non-production stacks, fail closed in production (Sign-in with Google) |
@@ -110,6 +117,7 @@ One record per product or technical decision, named after the decision.
 | [Properties without an owner are never claimed automatically](decisions/unowned-properties-never-claimed-automatically.md) | Unowned properties are never claimed automatically, replaces the claim by the first account (Property) |
 | [properties.account_user_id has no cascade on delete, sessions.user_id has one](decisions/property-foreign-key-without-cascade.md) | Property foreign key has no cascade, session foreign key has (Account deletion) |
 | [Server-side sessions last 30 days from last use, with hashed tokens](decisions/server-side-sessions-30-days-hashed-tokens.md) | Server-side sessions, 30 days sliding, hashed tokens (Session) |
+| [Stub address service in CI and local](decisions/stub-address-service-in-ci-and-local.md) | The local and CI stack (DEPLOY_PROJECT pilot-dev) answer address calls from a synthetic stub; previews and production call PDOK |
 | [The API is a Hono app with injected dependencies](decisions/hono-app-with-injected-dependencies.md) | Hono app with injected dependencies, reason for Hono unknown (API) |
 | [The app version is the version in api/package.json, shown in the footer](decisions/app-version-from-api-package-json.md) | App version is the version in api/package.json (App version and health status) |
 | [The duplicate check applies per account](decisions/duplicate-check-per-account.md) | Duplicate check per account (Property) |

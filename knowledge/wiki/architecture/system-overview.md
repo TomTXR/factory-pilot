@@ -3,9 +3,9 @@ summary: Web (React, nginx), API (Hono), PostgreSQL 17, compose services and env
 ---
 # System overview
 
-> Sources: code and configuration on `main`, checked 2026-11-19; Story #63
+> Sources: code and configuration on `main`, checked 2026-11-19; Story #63; Story #59
 > Raw: [Story 63](../../raw/stories/2026-11-19-story-63-document-current-app.md)
-> Updated: 2026-11-19
+> Updated: 2026-11-20
 
 ## Purpose
 
@@ -24,7 +24,8 @@ How the app is built and run: the parts, where they run, and how a change reache
 9. App secrets named `PILOT_<NAME>` are passed to the production deploy only, on stdin; previews and CI never get them. Only values on one line are passed.
 10. `docker-compose.server.yml` removes the host port and joins the web container to the external network `factory-edge` under the alias `pilot-prod-web` or `pilot-pr-<n>-web`.
 11. Edge: Caddy on the factory VM (`deploy/server/edge/Caddyfile`). `pilot.domigo.com` goes to `pilot-prod-web:80`. `pilot-pr-<n>.domigo.com` goes to `pilot-pr-<n>-web:80`, with on-demand TLS allowed only for hosts matching `pilot-pr-<digits>.domigo.com` (checked by a local `ask` endpoint). Every other host answers 404. The factory host is behind basic auth.
-12. Environments: production https://pilot.domigo.com; previews https://pilot-pr-<n>.domigo.com after CI passes on the pull request.
+12. Outbound calls: the API calls Google for sign-in and `api.pdok.nl` (keyless PDOK Locatieserver, 5 second timeout) for address search. `api/src/server.ts` uses a stub with synthetic addresses when `DEPLOY_PROJECT` is `pilot-dev` (local and CI) and PDOK otherwise (previews, production), and logs the mode. No new environment variable or secret ([address search](../product/address-search.md)).
+13. Environments: production https://pilot.domigo.com; previews https://pilot-pr-<n>.domigo.com after CI passes on the pull request.
 
 ## Relations
 
@@ -51,6 +52,7 @@ How the app is built and run: the parts, where they run, and how a change reache
 
 ## See Also
 
+- [Address search](../product/address-search.md)
 - [Data model](data-model.md)
 - [API](api.md)
 - [Authentication](authentication.md)
