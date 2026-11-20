@@ -1,8 +1,8 @@
-# {NNN}: {Decision}
+# {Decision}
 
 > Sources: {Story #n comment by <login>, YYYY-MM-DD}
 > Raw: [{story record}](../../raw/stories/{file}.md)
-> Status: accepted | superseded by [{NNN}](./{NNN-slug}.md)
+> Status: accepted | superseded by [{Decision}](./{slug}.md)
 > Updated: YYYY-MM-DD
 
 ## Context

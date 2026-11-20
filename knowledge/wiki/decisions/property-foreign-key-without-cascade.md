@@ -1,4 +1,4 @@
-# 016: properties.account_user_id has no cascade on delete, sessions.user_id has one
+# properties.account_user_id has no cascade on delete, sessions.user_id has one
 
 > Sources: Comment in `api/migrations/004_property_accounts.sql`; `deleteAccount` in `api/src/authStores.ts`
 > Raw: [Story 35 per-account properties](../../raw/stories/2026-11-19-story-35-per-account-properties.md)
@@ -15,7 +15,7 @@ The foreign key from properties to users has no `on delete cascade`, so deleting
 
 ## Reason
 
-Safety: only the explicit account deletion flow ([015](./015-account-deletion-is-permanent-with-typed-delete.md)) removes properties.
+Safety: only the explicit account deletion flow ([Account deletion is permanent, confirmed by typing DELETE, in one transaction](./account-deletion-is-permanent-with-typed-delete.md)) removes properties.
 
 ## Alternatives
 

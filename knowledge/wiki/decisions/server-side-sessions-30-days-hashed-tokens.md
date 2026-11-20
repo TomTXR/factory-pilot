@@ -1,4 +1,4 @@
-# 008: Server-side sessions last 30 days from last use, with hashed tokens
+# Server-side sessions last 30 days from last use, with hashed tokens
 
 > Sources: Story #28, product owner answer 6 on https://github.com/TomTXR/factory-pilot/issues/28#issuecomment-7005844848 ("probably 30 days is a good time"); refined plan https://github.com/TomTXR/factory-pilot/issues/28#issuecomment-7005992740; `api/src/auth.ts`, `api/src/authRoutes.ts`
 > Raw: [Story 34 Google sign-in](../../raw/stories/2026-11-19-story-34-google-sign-in.md)

@@ -1,4 +1,4 @@
-# 010: The Google email and display name are stored, an exception to synthetic data
+# The Google email and display name are stored, an exception to synthetic data
 
 > Sources: Story #28, product owner answer 5 on https://github.com/TomTXR/factory-pilot/issues/28#issuecomment-7005844848 ("thats fine, no problem")
 > Raw: [Story 34 Google sign-in](../../raw/stories/2026-11-19-story-34-google-sign-in.md)

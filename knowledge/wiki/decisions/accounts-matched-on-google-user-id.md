@@ -1,4 +1,4 @@
-# 007: Accounts are matched on the Google user id, not on the email
+# Accounts are matched on the Google user id, not on the email
 
 > Sources: Story #34 plan restating #28 (https://github.com/TomTXR/factory-pilot/issues/28#issuecomment-7005992740); `google_sub` in `api/migrations/003_users_sessions.sql`
 > Raw: [Story 34 Google sign-in](../../raw/stories/2026-11-19-story-34-google-sign-in.md)

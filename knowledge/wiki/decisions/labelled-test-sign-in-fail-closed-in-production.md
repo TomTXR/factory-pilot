@@ -1,4 +1,4 @@
-# 009: Labelled test sign-in on non-production stacks, fail closed in production
+# Labelled test sign-in on non-production stacks, fail closed in production
 
 > Sources: Story #28 plan question 4 (previews cannot use Google) and answer "understood" on https://github.com/TomTXR/factory-pilot/issues/28#issuecomment-7005844848; `loadAuthConfig` in `api/src/auth.ts`; `AGENTS.md` rule 11
 > Raw: [Story 34 Google sign-in](../../raw/stories/2026-11-19-story-34-google-sign-in.md)

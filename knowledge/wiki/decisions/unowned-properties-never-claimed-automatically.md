@@ -1,4 +1,4 @@
-# 014: Properties without an owner are never claimed automatically
+# Properties without an owner are never claimed automatically
 
 > Sources: Story #35, product owner `/changes` comment on https://github.com/TomTXR/factory-pilot/issues/35#issuecomment-7013278032; code in `api/src/propertyRepository.ts` (no claim code)
 > Raw: [Story 35 per-account properties](../../raw/stories/2026-11-19-story-35-per-account-properties.md)
@@ -7,7 +7,7 @@
 
 ## Context
 
-Supersedes [013](./013-first-account-claims-unowned-properties.md). The product owner reviewed the preview of #35 and changed the plan.
+Supersedes [The first account that signs in claims properties without an owner](./first-account-claims-unowned-properties.md). The product owner reviewed the preview of #35 and changed the plan.
 
 ## Decision
 

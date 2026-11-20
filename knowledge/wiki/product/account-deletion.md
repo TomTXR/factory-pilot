@@ -23,7 +23,7 @@ A signed-in user can permanently delete their own account and everything in it, 
 ## Relations
 
 - Account: the record that is removed ([account](account.md)).
-- Property: deleted explicitly with the account; the foreign key has no cascade on purpose ([016](../decisions/016-property-foreign-key-without-cascade.md)).
+- Property: deleted explicitly with the account; the foreign key has no cascade on purpose ([properties.account_user_id has no cascade on delete, sessions.user_id has one](../decisions/property-foreign-key-without-cascade.md)).
 - Session: removed through the cascade on `sessions.user_id`.
 
 ## Code
@@ -35,8 +35,8 @@ A signed-in user can permanently delete their own account and everything in it, 
 
 ## Decisions
 
-- [015 Permanent, typed DELETE, one transaction](../decisions/015-account-deletion-is-permanent-with-typed-delete.md)
-- [016 Foreign key without cascade](../decisions/016-property-foreign-key-without-cascade.md)
+- [015 Permanent, typed DELETE, one transaction](../decisions/account-deletion-is-permanent-with-typed-delete.md)
+- [016 Foreign key without cascade](../decisions/property-foreign-key-without-cascade.md)
 
 ## Stories
 

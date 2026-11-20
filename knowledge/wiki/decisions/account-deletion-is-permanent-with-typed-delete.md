@@ -1,4 +1,4 @@
-# 015: Account deletion is permanent, confirmed by typing DELETE, in one transaction
+# Account deletion is permanent, confirmed by typing DELETE, in one transaction
 
 > Sources: Story #46, product owner answers on https://github.com/TomTXR/factory-pilot/issues/46#issuecomment-7012494065; `api/src/authStores.ts`, `api/src/authRoutes.ts`
 > Raw: [Story 46 delete account](../../raw/stories/2026-11-19-story-46-delete-account.md)

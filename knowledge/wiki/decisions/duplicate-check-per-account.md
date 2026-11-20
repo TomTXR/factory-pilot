@@ -1,4 +1,4 @@
-# 012: The duplicate check applies per account
+# The duplicate check applies per account
 
 > Sources: Story #35 plan criterion 4, https://github.com/TomTXR/factory-pilot/issues/35#issuecomment-7011825436; `api/migrations/004_property_accounts.sql`
 > Raw: [Story 35 per-account properties](../../raw/stories/2026-11-19-story-35-per-account-properties.md)
@@ -7,7 +7,7 @@
 
 ## Context
 
-[001](./001-property-identity-address-and-owner.md) made addresses unique across the table. With accounts, two users may track the same address.
+[A property is identified by its normalised address plus owner name](./property-identity-address-and-owner.md) made addresses unique across the table. With accounts, two users may track the same address.
 
 ## Decision
 

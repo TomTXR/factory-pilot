@@ -1,4 +1,4 @@
-# 003: Editing a property is part of the first version
+# Editing a property is part of the first version
 
 > Sources: Story #20, product owner answer 6 on https://github.com/TomTXR/factory-pilot/issues/20#issuecomment-6980020998
 > Raw: [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-properties.md)

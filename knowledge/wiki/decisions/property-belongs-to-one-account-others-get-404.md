@@ -1,4 +1,4 @@
-# 011: A property belongs to exactly one account, other accounts get 404
+# A property belongs to exactly one account, other accounts get 404
 
 > Sources: Story #35 plan https://github.com/TomTXR/factory-pilot/issues/35#issuecomment-7011825436; `api/src/propertyRepository.ts`
 > Raw: [Story 35 per-account properties](../../raw/stories/2026-11-19-story-35-per-account-properties.md)
