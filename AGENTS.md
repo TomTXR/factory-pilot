@@ -66,7 +66,7 @@ Every agent, every story:
 1. TypeScript strict everywhere. No `any` unless commented why.
 2. No `console.*`. Use `logger` from `api/src/logger.ts` (structured JSON). ESLint enforces this.
 3. No emojis in code, comments, logs, commit messages or UI text.
-4. Every behaviour change comes with tests: unit tests for logic and routes, a Playwright test for each user-visible flow.
+4. Every behaviour change comes with tests, as section Tests says.
 5. Database: add a new migration file for each schema change, named `YYYYMMDDTHHMM_name.sql` with the current UTC time. Never edit an applied migration.
 6. Keep changes small and focused on the ticket. No unrelated refactors.
 7. Keep existing comments when refactoring.
@@ -76,6 +76,17 @@ Every agent, every story:
 11. App secrets (API keys, OAuth clients) are repository secrets named `PILOT_<NAME>`. Production gets them through the deploy; previews, CI and local runs do not. Map them in `docker-compose.yml` (for example `GOOGLE_CLIENT_ID: ${PILOT_GOOGLE_CLIENT_ID:-}`). The app must work without them where possible (test path, clearly labelled) and otherwise fail with a clear log line, never run unprotected.
 12. Work only a human can do (accounts, external consoles, credentials) is a human task of the story, a sub-issue labelled `factory:human-task`. Never ask for secret values in issues, comments or pull requests. If you find a missing human task while building, describe it under "Human tasks needed" in the pull request description.
 13. If the ticket is unclear, or you decide not to build it (for example it depends on a story that is not merged yet), do not guess and never stop silently: post a comment on the issue that says why and what is needed, then add the label `factory:blocked` (`gh issue edit <n> --add-label factory:blocked`). The factory then asks the story's owner. The same applies to a revision that needs no code change: say why in a comment and add `factory:blocked`. A run that ends without a push and without this comment looks like a stall.
+
+## Tests
+
+Tests are the regression suite: CI runs all of them on every PR, so each test protects its behaviour from later stories. Write few tests that prove the story, not many tests that repeat each other.
+
+1. **One test per acceptance criterion.** The plan numbers the criteria. Put the criterion ID at the start of the test title: `test('#46 AC4: the dialog names the email and the number of properties', ...)`. One test may prove several criteria: `'#46 AC6, AC7: ...'`. Untouched old tests keep their titles.
+2. **Lowest level that proves it.** Logic and API routes: a unit or route test (Vitest). Playwright only for a flow that crosses web, API and database or depends on the browser, at most one test per user flow. Do not test the same criterion at two levels.
+3. **A bug fix gets one regression test** that fails without the fix. Run it once against the unchanged code to see it fail.
+4. **No extra tests.** No test without a criterion or a bug, no tests of library or framework behaviour, no snapshot tests. Change or delete an existing test when the story changes its behaviour; do not keep it next to the new one.
+5. **Not automatable:** if a criterion cannot be checked by a test (for example a colour judged by eye), add a line `Not automated: AC<k> <reason>` to the PR description before you push. The human checks it on the preview.
+6. CI enforces 1 and 5 on factory PRs (`.github/scripts/criteria-check.sh`): every criterion of the newest plan needs a test title with its ID or a "Not automated" line. The agent reviewer checks 2 to 4.
 
 ## Parallel work
 
@@ -97,7 +108,7 @@ Several stories are built at the same time, each in its own branch. Git merges l
 Reviewers (human or agent) check, in this order:
 
 1. **Correctness:** does the change do what the issue's acceptance criteria say? Are edge cases handled (empty input, invalid input, missing records)?
-2. **Tests:** does every behaviour change have a test that would fail without it? Is there a Playwright test for new user-visible flows?
+2. **Tests:** does each criterion's test fail without the change? Is it at the lowest level that proves it (section Tests)? A missing test is a P1. So is a new test that maps to no criterion or bug, a criterion tested twice at different levels, or a "Not automated" reason that a test could cover.
 3. **Data safety:** migrations are additive and new files only; no data loss; inputs validated at the API boundary.
 4. **Security:** no secrets in code, no SQL built by string concatenation (use the tagged `sql` template), no unvalidated user input in queries or HTML.
 5. **Rules above:** logger instead of console, no emojis, strict types, mobile layout.
