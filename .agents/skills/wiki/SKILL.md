@@ -14,7 +14,6 @@ knowledge/
 ├── raw/<topic>/YYYY-MM-DD-slug.md   immutable sources (never edit after creation)
 └── wiki/
     ├── index.md                     start here: concept map, then every article with link, one-line summary, Updated date
-    ├── log.md                       append-only operation log
     └── <topic>/<article>.md         compiled articles (one level of topics only)
 ```
 
@@ -55,12 +54,7 @@ Turn a source into knowledge. Always all steps.
 2. Compile: merge into the article with the same core subject, or create a new article (named after the concept, not the source) using `references/article-template.md`. Distill, do not copy.
 3. Contradiction check against existing articles (rule 4).
 4. Cascade: update every article whose content is materially affected. Add bidirectional See Also links.
-5. Update `wiki/index.md` (every touched article, with Updated date) and append to `wiki/log.md`:
-   ```
-   ## [YYYY-MM-DD] ingest | <primary article title>
-   - Raw: <raw path>
-   - Updated: <other article title>
-   ```
+5. Update `wiki/index.md` (every touched article, with Updated date).
 
 ### record (factory, in every story PR)
 
@@ -70,7 +64,7 @@ Write what the story built and decided, in the story's own PR, before it is read
 2. Update or create the concept articles (product, architecture, design) of every concept the PR adds or changes: purpose, rules, relations, code entry points. Name articles after the concept, not the story.
 3. Add a decision record in `decisions/` for every decision: a human answer in the issue, or a technical choice in the code that a later agent could question (for example a session lifetime, a data ownership rule, a library). Mark a replaced decision as superseded; do not delete it.
 4. Cascade: update every other article the change makes wrong, with bidirectional See Also links.
-5. Update `index.md` (concept map, summaries, Updated dates) and `log.md` (`## [YYYY-MM-DD] record | story #<n>`). Human answers to agent questions are the most valuable part: they must end up in an article, so the question is not asked again.
+5. Update `index.md` (concept map, summaries, Updated dates). Human answers to agent questions are the most valuable part: they must end up in an article, so the question is not asked again.
 
 ### query
 
@@ -90,9 +84,9 @@ Heuristic, report only (issue or PR comment):
 - Orphan articles (no inbound links)
 - Concepts mentioned often but without their own article
 
-Append `## [YYYY-MM-DD] lint | <N> issues found, <M> auto-fixed` to `wiki/log.md`.
-
 ## Conventions
+
+- No operation log: git history and the story records in `raw/stories/` say what changed, when and why. An append-only file at the end would make every two parallel PRs conflict.
 
 - Standard markdown, relative links, dates as YYYY-MM-DD.
 - No emojis.

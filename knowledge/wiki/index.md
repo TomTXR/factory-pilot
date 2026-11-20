@@ -118,7 +118,7 @@ How work moves through the software factory.
 
 | Article | Summary | Updated |
 |---------|---------|---------|
-| [Project Knowledge](process/project-knowledge.md) | How the wiki is structured, read and updated: index as single entry, concept map, topics, who writes what in every PR, CI check, reviewer duty, why | 2026-11-19 |
+| [Project Knowledge](process/project-knowledge.md) | How the wiki is structured, read and updated: index as single entry, concept map, topics, who writes what in every PR, CI check, reviewer duty, parallel changes (no operation log), why | 2026-11-20 |
 | [Story Workflow](process/story-workflow.md) | Stages, wiki update in every PR, human commands at the two gates, cancel, story split into sub-issues, human tasks, task comments and app secrets, follow-up stories, dependencies, quiet notifications, story owners, release, stalls and the watchdog | 2026-11-19 |
 | [Factory Self-Hosting](process/factory-self-hosting.md) | Idea, not decided: the factory develops itself; why it fits, safeguards (lockout, rights, testing, watchdog), a software factory hub as the central entry point, publishing the learnings as a guide, suggested order | 2026-11-19 |
 
