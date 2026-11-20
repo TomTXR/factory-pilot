@@ -10,7 +10,8 @@
     "test": "npm --prefix api test && npm --prefix web test",
     "e2e": "playwright test",
     "up": "docker compose up -d --build --wait",
-    "down": "docker compose down -v"
+    "down": "docker compose down -v",
+    "wiki:index": "node .github/scripts/wiki-index.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

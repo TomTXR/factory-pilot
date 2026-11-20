@@ -1,3 +1,6 @@
+---
+summary: {One line: what this record holds, so that an agent can decide whether to read it.}
+---
 # {Decision}
 
 > Sources: {Story #n comment by <login>, YYYY-MM-DD}

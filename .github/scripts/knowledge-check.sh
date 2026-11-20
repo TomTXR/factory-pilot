@@ -14,7 +14,7 @@ fail=0
 if [ -n "$code" ] && [ -z "$wiki" ]; then
   echo "FAIL knowledge: app code changed but no article in knowledge/wiki/ was updated."
   echo "  Update the articles of the concepts you changed"
-  echo "  (product/, architecture/, design/, decisions/), the concept map and summaries in knowledge/wiki/index.md, as AGENTS.md section Knowledge says. Changed code:"
+  echo "  (product/, architecture/, design/, decisions/), their front matter (summary, concepts), then run npm run wiki:index, as AGENTS.md section Knowledge says. Changed code:"
   echo "$code" | head -10 | sed 's/^/    /'
   fail=1
 fi

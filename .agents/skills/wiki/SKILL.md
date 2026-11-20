@@ -13,7 +13,7 @@ description: Read and maintain the project knowledge wiki in knowledge/ (Karpath
 knowledge/
 ├── raw/<topic>/YYYY-MM-DD-slug.md   immutable sources (never edit after creation)
 └── wiki/
-    ├── index.md                     start here: concept map, then every article with link and one-line summary
+    ├── index.md                     start here: concept map and every article (GENERATED, never edit)
     └── <topic>/<article>.md         compiled articles (one level of topics only)
 ```
 
@@ -26,14 +26,29 @@ knowledge/
 | `users` | Personas and their needs | `article-template.md` |
 | `process`, `lessons` | How the factory works and why its rules exist | `article-template.md` |
 
-Add a topic only for a genuinely distinct area, and add it to this table, `AGENTS.md` and `wiki/index.md`. Templates: `references/` next to this file.
+Add a topic only for a genuinely distinct area, and add it to this table, `AGENTS.md` and the topic list in `.github/scripts/wiki-index.mjs`. Templates: `references/` next to this file.
 
-### Index (`index.md`)
+### Index (`index.md`): generated
 
-The single entry point, read in full by every agent before it works. Two parts:
+The single entry point, read in full by every agent before it works. It is **generated** by `npm run wiki:index` from the front matter of every article; never edit it by hand. CI fails when it is not up to date. On a merge conflict in it, take either side and regenerate.
 
-1. **Concept map:** a Mermaid diagram of the concepts and their relations, then a table with one row per concept: concept, article, code entry point (file paths), related concepts. Change it whenever a concept or relation is added, renamed, changed or removed.
-2. **Articles by topic:** every article with link and one-line summary, rows sorted alphabetically by article title. No dates: the date is in each article's header, and a date column would change in every touched row and make parallel PRs conflict. The summary must let an agent decide whether the article is relevant without opening it: name the concepts, rules and decisions it holds.
+Every article starts with front matter:
+
+```
+---
+summary: One line that lets an agent decide whether to read the article: the concepts, rules and decisions it holds.
+concepts:                      # only in articles that define concepts
+  - name: Session
+    code: api/src/auth.ts, api/src/authStores.ts
+    relates: identifies Account; is required by API access protection
+  - name: Item
+    status: planned
+---
+```
+
+- `relates`: `<label> <Concept>` separated by `;`. `<Concept>` must be a concept defined in some article; the generator draws the diagram and fills "Related to" in both directions.
+- Each concept is defined once, in the article that describes it. Planned concepts have `status: planned` and no code.
+- The generator writes the concept map (diagram and table, sorted by concept) and the article tables by topic (sorted by title). Sorting puts parallel additions on different lines.
 
 ## Rules
 
@@ -54,7 +69,7 @@ Turn a source into knowledge. Always all steps.
 2. Compile: merge into the article with the same core subject, or create a new article (named after the concept, not the source) using `references/article-template.md`. Distill, do not copy.
 3. Contradiction check against existing articles (rule 4).
 4. Cascade: update every article whose content is materially affected. Add bidirectional See Also links.
-5. Update `wiki/index.md` (summary of every touched article; new rows in alphabetical order).
+5. Update the front matter (summary, concepts) of every touched article and run `npm run wiki:index`.
 
 ### record (factory, in every story PR)
 
@@ -64,7 +79,7 @@ Write what the story built and decided, in the story's own PR, before it is read
 2. Update or create the concept articles (product, architecture, design) of every concept the PR adds or changes: purpose, rules, relations, code entry points. Name articles after the concept, not the story.
 3. Add a decision record in `decisions/` for every decision: a human answer in the issue, or a technical choice in the code that a later agent could question (for example a session lifetime, a data ownership rule, a library). Mark a replaced decision as superseded; do not delete it.
 4. Cascade: update every other article the change makes wrong, with bidirectional See Also links.
-5. Update `index.md` (concept map, summaries; new rows in alphabetical order). Human answers to agent questions are the most valuable part: they must end up in an article, so the question is not asked again.
+5. Update the front matter (summary, concepts and their relations) of every touched article and run `npm run wiki:index`. Human answers to agent questions are the most valuable part: they must end up in an article, so the question is not asked again.
 
 ### query
 
@@ -74,7 +89,7 @@ Write what the story built and decided, in the story's own PR, before it is read
 ### lint
 
 Deterministic, fix automatically:
-- Every article file appears in `wiki/index.md`; every index entry points to an existing file.
+- `npm run wiki:index` succeeds (front matter complete, relations point to defined concepts).
 - Every relative link and every Raw reference resolves.
 - See Also links are bidirectional.
 
@@ -86,7 +101,7 @@ Heuristic, report only (issue or PR comment):
 
 ## Conventions
 
-- Parallel PRs: several story PRs write the wiki at the same time. Insert rows in sorted order, never at the end; use no running numbers.
+- Parallel PRs: several story PRs write the wiki at the same time. Never append to a shared list by hand; use no running numbers (AGENTS.md, "Parallel work").
 - No operation log: git history and the story records in `raw/stories/` say what changed, when and why. An append-only file at the end would make every two parallel PRs conflict.
 
 - Standard markdown, relative links, dates as YYYY-MM-DD.

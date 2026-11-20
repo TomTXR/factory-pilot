@@ -14,7 +14,7 @@ Data is always synthetic. Never add real personal data, real addresses of real p
 |------|------|-------|
 | Web | `web/` | React 19, Vite, TypeScript (strict), Tailwind CSS v4, Vitest + Testing Library |
 | API | `api/` | Node 24, Hono, TypeScript (strict), `postgres` client, Vitest |
-| Database | `api/migrations/` | PostgreSQL 17. Schema changes only through `api/migrations/NNN_name.sql`, applied at API start-up |
+| Database | `api/migrations/` | PostgreSQL 17. Schema changes only through new files `api/migrations/YYYYMMDDTHHMM_name.sql` (UTC creation time), applied at API start-up in name order |
 | Auth | `api/src/auth*.ts`, `api/src/googleClient.ts` | Sign in with Google, server-side sessions; labelled test sign-in on local, CI and preview stacks |
 | E2E | `e2e/tests/` | Playwright, desktop and mobile viewport |
 | Runtime | `docker-compose.yml` | `db`, `api`, `web` (nginx serves the SPA and proxies `/api` to `api`) |
@@ -45,7 +45,7 @@ All of `lint`, `typecheck`, `test` and `e2e` must pass before a PR is ready. CI 
 
 | Place | Holds |
 |-------|-------|
-| `knowledge/wiki/index.md` | The entry point. First the concept map (every concept, its relations, its article, its code entry point), then every article with a one-line summary. Start here. |
+| `knowledge/wiki/index.md` | The entry point. First the concept map (every concept, its relations, its article, its code entry point), then every article with a one-line summary. Start here. Generated from the articles' front matter (`npm run wiki:index`); never edit it by hand. |
 | `knowledge/wiki/product/` | Product concepts and features: purpose, rules, status |
 | `knowledge/wiki/architecture/` | How the software is built: system, data model, API, auth, deploy |
 | `knowledge/wiki/design/` | Design concepts, UI patterns, screens; small assets in `design/assets/` |
@@ -56,7 +56,7 @@ All of `lint`, `typecheck`, `test` and `e2e` must pass before a PR is ready. CI 
 Every agent, every story:
 
 1. **Read first.** Before you plan, build or review, read all of `knowledge/wiki/index.md`. Decide from the concept map and the summaries which articles are relevant to your task, and read them. The plan lists the ones it used under "Context used": that is a minimum for the builder and the reviewer, not a limit. Read code where the articles point to it. If the wiki has no answer to a product question, ask in the issue; do not guess.
-2. **Update with the work.** The PR that changes the app also updates the wiki, in a separate commit: create or update the articles of every concept you added or changed, and every other article the change makes wrong (cascade), update the concept map and the summaries in `index.md`, and add a decision record for every decision taken (by the human in the issue or by you in the code). The plan lists the expected updates under "Knowledge updates". Do this again on every rework and revision.
+2. **Update with the work.** The PR that changes the app also updates the wiki, in a separate commit: create or update the articles of every concept you added or changed, and every other article the change makes wrong (cascade), update their front matter (summary, concepts, relations) and run `npm run wiki:index`, and add a decision record for every decision taken (by the human in the issue or by you in the code). The plan lists the expected updates under "Knowledge updates". Do this again on every rework and revision.
 3. **Record the story.** The PR also adds the story record `knowledge/raw/stories/YYYY-MM-DD-story-<n>-<slug>.md` (wiki skill, operation **record**).
 4. CI enforces 2 and 3: the required check fails when app code changes without a wiki update, or when a factory PR has no story record. The agent reviewer checks that the wiki matches the change. No human reviews the wiki.
 5. Never edit a file in `knowledge/raw/` after it is merged. Until the merge, the story record of your own PR may be edited.
@@ -67,7 +67,7 @@ Every agent, every story:
 2. No `console.*`. Use `logger` from `api/src/logger.ts` (structured JSON). ESLint enforces this.
 3. No emojis in code, comments, logs, commit messages or UI text.
 4. Every behaviour change comes with tests: unit tests for logic and routes, a Playwright test for each user-visible flow.
-5. Database: add a new migration file for each schema change. Never edit an applied migration.
+5. Database: add a new migration file for each schema change, named `YYYYMMDDTHHMM_name.sql` with the current UTC time. Never edit an applied migration.
 6. Keep changes small and focused on the ticket. No unrelated refactors.
 7. Keep existing comments when refactoring.
 8. UI must work on a 390 px wide mobile screen and on desktop.
@@ -76,6 +76,14 @@ Every agent, every story:
 11. App secrets (API keys, OAuth clients) are repository secrets named `PILOT_<NAME>`. Production gets them through the deploy; previews, CI and local runs do not. Map them in `docker-compose.yml` (for example `GOOGLE_CLIENT_ID: ${PILOT_GOOGLE_CLIENT_ID:-}`). The app must work without them where possible (test path, clearly labelled) and otherwise fail with a clear log line, never run unprotected.
 12. Work only a human can do (accounts, external consoles, credentials) is a human task of the story, a sub-issue labelled `factory:human-task`. Never ask for secret values in issues, comments or pull requests. If you find a missing human task while building, describe it under "Human tasks needed" in the pull request description.
 13. If the ticket is unclear, or you decide not to build it (for example it depends on a story that is not merged yet), do not guess and never stop silently: post a comment on the issue that says why and what is needed, then add the label `factory:blocked` (`gh issue edit <n> --add-label factory:blocked`). The factory then asks the story's owner. The same applies to a revision that needs no code change: say why in a comment and add `factory:blocked`. A run that ends without a push and without this comment looks like a stall.
+
+## Parallel work
+
+Several stories are built at the same time, each in its own branch. Git merges line by line and reports a conflict only when two branches change the same or adjacent lines. These rules apply to every file, so that the only conflicts left are real ones:
+
+1. **No running numbers.** Never name or number a new file, record or entry "the next number": two branches take the same one and git reports nothing. Name by content (`decisions/server-side-sessions.md`), by UTC time (`api/migrations/20261120T0815_add_items.sql`) or by a number GitHub assigns (`story-<issue>`).
+2. **No shared lists edited by hand.** Put each item in its own file. Lists of items are generated: `knowledge/wiki/index.md` (`npm run wiki:index`), `package-lock.json` (`npm install`). On a merge conflict in a generated file, take either side and regenerate; never merge it by hand.
+3. **Real conflicts:** when `main` and your branch changed the same code or article, merge `main`, keep both intents, and run all checks. CI always runs on the branch brought up to date with `main`, so changes that merge cleanly but break each other are caught there.
 
 ## Pull requests
 
