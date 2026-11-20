@@ -1,24 +1,28 @@
 # Home Maintenance Log
 
-> Sources: Factory spike team, 2026-11-17 (SYNTHETIC); product owner answers on issue #20, 2026-11-18; stories #34 and #35 and product owner answers on #28, 2026-11-19
-> Raw: [Product brief](../../raw/product/2026-11-17-pilot-product-brief.md); [Interview Anna](../../raw/users/2026-11-17-interview-owner-anna.md); [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-properties.md); [Story 34 Google sign-in](../../raw/stories/2026-11-19-story-34-google-sign-in.md)
+> Sources: Factory spike team, 2026-11-17 (SYNTHETIC); product owner answers on issue #20, 2026-11-18; stories #34 and #35 and product owner answers on #28, 2026-11-19; stories #46 and #63, 2026-11-19
+> Raw: [Product brief](../../raw/product/2026-11-17-pilot-product-brief.md); [Interview Anna](../../raw/users/2026-11-17-interview-owner-anna.md); [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-properties.md); [Story 34 Google sign-in](../../raw/stories/2026-11-19-story-34-google-sign-in.md); [Story 63](../../raw/stories/2026-11-19-story-63-document-current-app.md)
 > Updated: 2026-11-19
 
 ## Overview
 
 The Home Maintenance Log lets private home owners record properties, the items in them that need care, and maintenance entries with date, description, cost and who did the work. Version 1 focuses on overview and cost transparency, grouped by the DomiGO value categories. SYNTHETIC product definition for the factory spike.
 
+This is the product overview. The rules of each concept that exists today are in its own article: [Property](property.md), [Account](account.md), [Account deletion](account-deletion.md), [App version and health status](app-version.md), and for sign-in, sessions and API protection [Authentication](../architecture/authentication.md). How it is built: [System overview](../architecture/system-overview.md), [Data model](../architecture/data-model.md), [API](../architecture/api.md). Screens: [Screens](../design/screens.md). Why: the [decision records](../index.md#decisions). Not built yet (planned): Item, Maintenance entry, GO category totals, sharing a property (#32).
+
 ## Data model (version 1)
+
+Only Property exists today. Item and Maintenance entry are planned and have no table, code or screen yet.
 
 | Entity | Fields | Notes |
 |--------|--------|-------|
-| Property | display name (optional), street, house number, house number addition (optional), postal code, city, country (NL default, or DE), owner name, optional characteristics | A house or an apartment. See Properties below |
-| Item | property, name, category | Examples: heating, roof, smoke detectors |
-| Maintenance entry | item, date, description, cost (EUR), done by | Cost may be 0 (self-done work is still logged, per interview) |
+| Property (exists, [article](property.md)) | display name (optional), street, house number, house number addition (optional), postal code, city, country (NL default, or DE), owner name, optional characteristics | A house or an apartment. See Properties below |
+| Item (planned) | property, name, category | Examples: heating, roof, smoke detectors |
+| Maintenance entry (planned) | item, date, description, cost (EUR), done by | Cost may be 0 (self-done work is still logged, per interview) |
 
 ## Properties
 
-Source: [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-properties.md).
+Source: [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-properties.md). Full rules: [Property](property.md). Conflict annotation: the comment in `api/migrations/004_property_accounts.sql` says unowned properties are claimed by the first account that signs in; the code does not do this and the product owner dropped it ([decision 014](../decisions/014-unowned-properties-never-claimed-automatically.md), [013](../decisions/013-first-account-claims-unowned-properties.md)).
 
 - A property is identified by its postal address (street, house number, addition, postal code, city, country) plus the owner name (person or entity). Comparison ignores case and surrounding or repeated whitespace. The same address with another owner, or the same owner at another address or addition, is a different property. A duplicate is rejected (API 409).
 - Required: street, house number, postal code, city, owner name. Optional: display name (the property switcher shows it, falling back to street and house number), addition, country (Netherlands by default, Germany selectable).
@@ -31,7 +35,7 @@ Source: [Story 20 properties](../../raw/stories/2026-11-18-story-20-manage-prope
 
 ## Accounts and sign-in
 
-Source: [Story 34 Google sign-in](../../raw/stories/2026-11-19-story-34-google-sign-in.md). This replaces the earlier "no login" decision.
+Source: [Story 34 Google sign-in](../../raw/stories/2026-11-19-story-34-google-sign-in.md). This replaces the earlier "no login" decision. Full rules: [Account](account.md), [Authentication](../architecture/authentication.md), [Account deletion](account-deletion.md).
 
 - The app requires sign-in with Google. Without a valid session the user sees only a login screen, and every `/api/properties` route answers 401. `/api/health`, `/api/version` and the sign-in routes are public.
 - Sign-up is open: any Google account can sign in, and the first sign-in creates the account automatically. Accounts are matched on the Google user id, not the email.
@@ -56,3 +60,8 @@ Login methods other than Google, reminders, document uploads, sharing with tenan
 - [GO value categories](go-categories.md)
 - [Home owner persona](../users/home-owner.md)
 - [Story workflow](../process/story-workflow.md)
+- [Property](property.md), [Account](account.md), [Account deletion](account-deletion.md), [App version and health status](app-version.md)
+- [Authentication](../architecture/authentication.md), [System overview](../architecture/system-overview.md)
+- [Data model](../architecture/data-model.md)
+- [API](../architecture/api.md)
+- [Screens](../design/screens.md)
